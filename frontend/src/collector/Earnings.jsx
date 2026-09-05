@@ -35,6 +35,7 @@ function fmtDate(d, lang) {
   return new Date(d).toLocaleString(locale, {
     day: 'numeric', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
   });
 }
 

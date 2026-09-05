@@ -20,6 +20,7 @@ function fmtDate(iso, lang) {
   return new Date(iso).toLocaleString(locale, {
     day: 'numeric', month: 'short',
     hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
   });
 }
 

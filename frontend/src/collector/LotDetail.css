@@ -66,6 +66,13 @@
   color: var(--color-text-primary);
 }
 
+.detail-item__delta {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--color-warning);
+  margin-top: var(--space-1);
+}
+
 .font-mono { font-family: var(--font-mono); font-size: 0.9em !important; }
 
 /* Two-column layout on desktop */

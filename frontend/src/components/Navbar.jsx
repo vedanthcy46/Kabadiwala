@@ -16,6 +16,7 @@ function navFor(role, t) {
     return [
       { to: '/recycler', label: t('nav.recyclerPortal'), icon: '⊞' },
       { to: '/recycler/scan', label: t('recyclerScan.nav'), icon: '▣' },
+      { to: '/recycler?section=profile', label: t('recyclerProfile.title'), icon: '👤' },
       { to: '/safety', label: t('nav.safety'), icon: '' },
     ];
   }

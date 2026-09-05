@@ -5,9 +5,6 @@ import { loginCollectorSchema, registerCollectorSchema } from '../../validations
 
 const router = express.Router();
 
-// List collector accounts (login screen lists demo accounts)
-router.get('/', collectorsController.getCollectors);
-
 // Collector registration — create an account (phone/name/area/language)
 router.post('/register', validate(registerCollectorSchema), collectorsController.register);
 

@@ -22,12 +22,40 @@ app.use(express.json({ limit: '7mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Enable CORS
-// In production restrict to the deployed frontend origin (set CORS_ORIGIN env var).
-// Falls back to open wildcard in development so local Vite proxy still works.
-const corsOrigin = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
-  : true;
-app.use(cors({ origin: corsOrigin, credentials: true }));
+// Allowed origins (in priority order):
+//   1. CORS_ORIGIN env var — comma-separated list set in Render dashboard
+//   2. Hardcoded Netlify production URL — always allowed even if env var is missing
+//   3. localhost variants — allowed in development
+const ALWAYS_ALLOWED = [
+  'https://kabadiwalaconnect.netlify.app',
+];
+
+const envOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+  : [];
+
+const allowedOrigins = new Set([
+  ...ALWAYS_ALLOWED,
+  ...envOrigins,
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+]);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Id'],
+}));
+
+// Respond to all OPTIONS preflight requests immediately
+app.options('*', cors());
 
 // HTTP request logging
 app.use(pinoHttp({ logger }));

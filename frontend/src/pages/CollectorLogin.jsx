@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { getCollectors, loginCollector } from '../api/client';
+import { loginCollector } from '../api/client';
 import { saveSession } from '../services/auth';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
@@ -14,16 +14,9 @@ export default function CollectorLogin() {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
-  const [collectors, setCollectors] = useState([]);
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    getCollectors()
-      .then((r) => setCollectors(Array.isArray(r.data) ? r.data : []))
-      .catch(() => { });
-  }, []);
 
   async function handleLogin() {
     const phoneValue = phone.trim();
@@ -88,22 +81,6 @@ export default function CollectorLogin() {
             {busy ? <><LoadingSpinner size="sm" /> {t('collectorLogin.signingIn')}…</> : t('collectorLogin.signIn')}
           </button>
 
-          {collectors.length > 0 && (
-            <div className="login-demo" role="group" aria-label={t('collectorLogin.demoAccounts')}>
-              <p className="login-demo__label">{t('collectorLogin.demoAccounts')}</p>
-              {collectors.map((c) => (
-                <button
-                  key={c.id}
-                  className="demo-chip"
-                  onClick={() => { setPhone(c.phone); handleLogin(); }}
-                  disabled={busy}
-                >
-                  <span className="demo-chip__name">{c.name}</span>
-                  <span className="demo-chip__phone font-mono">{c.phone}</span>
-                </button>
-              ))}
-            </div>
-          )}
           <p className="login-hint">{t('collectorLogin.phoneHint')}</p>
           <p className="login-hint login-register-link">
             {t('collectorLogin.noAccount')}{' '}

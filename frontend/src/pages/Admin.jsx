@@ -25,7 +25,7 @@ const TAB_FALLBACKS = { lots: 'Lot register', audit: 'Audit trail' };
 
 function fmtDate(d) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 }
 
 const TODAY = new Date();

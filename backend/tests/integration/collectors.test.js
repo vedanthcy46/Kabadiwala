@@ -19,14 +19,9 @@ afterAll(async () => {
 });
 
 describe('Collector Auth API', () => {
-  it('GET /v1/collectors lists seeded collector accounts', async () => {
-    const res = await request(server).get('/v1/collectors').expect(200);
-
-    expect(res.body.success).toBe(true);
-    expect(res.body.count).toBe(2);
-    const names = res.body.data.map((c) => c.name);
-    expect(names).toContain('Ramesh Kumar');
-    expect(names).toContain('Suresh Patil');
+  it('GET /v1/collectors is removed (no public account listing)', async () => {
+    const res = await request(server).get('/v1/collectors').expect(404);
+    expect(res.body.code).toBe(404);
   });
 
   it('POST /v1/collectors/login returns collector + token for a valid phone', async () => {

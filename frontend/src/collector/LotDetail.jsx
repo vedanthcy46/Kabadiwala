@@ -22,6 +22,7 @@ function fmtDate(d) {
   return new Date(d).toLocaleString('en-IN', {
     day: 'numeric', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
   });
 }
 
@@ -312,7 +313,16 @@ export default function CollectorLotDetail() {
               )}
               <div className="detail-item">
                 <p className="detail-item__label">{t('lotDetail.weight')}</p>
-                <p className="detail-item__value">{lot.approx_weight_kg ?? '—'} {t('common.kg')}</p>
+                <div>
+                  <p className="detail-item__value">{lot.approx_weight_kg ?? '—'} {t('common.kg')}</p>
+                  {latestHandover?.weight_kg != null && Number(latestHandover.weight_kg) !== Number(lot.approx_weight_kg) && (
+                    <p className="detail-item__delta">
+                      Final: {latestHandover.weight_kg} {t('common.kg')}
+                      ({Number(latestHandover.weight_kg) > Number(lot.approx_weight_kg) ? '+' : ''}
+                      {(Number(latestHandover.weight_kg) - Number(lot.approx_weight_kg)).toFixed(1)} {t('common.kg')})
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="detail-item">
                 <p className="detail-item__label">{t('lotDetail.estimatedValue')}</p>
@@ -328,6 +338,20 @@ export default function CollectorLotDetail() {
                 <p className="detail-item__label">{t('earnings.filterPaid')}</p>
                 <StatusBadge status={lot.payment_status || 'pending'} />
               </div>
+              {lot.payment_status === 'paid' && latestHandover?.final_price != null && (
+                <div className="detail-item">
+                  <p className="detail-item__label">{t('lotDetail.payFinalPrice')}</p>
+                  <p className="detail-item__value" style={{ color: 'var(--color-accent)', fontWeight: 'var(--weight-bold)' }}>
+                    {fmt(latestHandover.final_price)}
+                  </p>
+                </div>
+              )}
+              {lot.payment_status === 'paid' && latestHandover?.payment_method && (
+                <div className="detail-item">
+                  <p className="detail-item__label">{t('lotDetail.payMethod')}</p>
+                  <p className="detail-item__value">{t(`lotDetail.payMethods.${latestHandover.payment_method}`)}</p>
+                </div>
+              )}
               {lot.recycler_name && (
                 <div className="detail-item">
                   <p className="detail-item__label">{t('recyclerDash.incomingLots')}</p>

@@ -14,7 +14,7 @@ const ALL_FILTER = 'all';
 function fmtDate(d, lang) {
   if (!d) return '';
   const locale = lang === 'hi' ? 'hi-IN' : lang === 'mr' ? 'mr-IN' : 'en-IN';
-  return new Date(d).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(d).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
 }
 
 function fmt(n) {

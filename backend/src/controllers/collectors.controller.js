@@ -1,11 +1,5 @@
 import * as collectorService from '../services/collectors.service.js';
 
-export const getCollectors = async (req, res) => {
-  const data = await collectorService.getCollectors();
-
-  res.status(200).json({ success: true, count: data.length, data });
-};
-
 export const register = async (req, res) => {
   const data = await collectorService.registerCollector(req.body);
 

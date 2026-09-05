@@ -18,6 +18,7 @@ function fmtDate(d, lang) {
   return new Date(d).toLocaleString(locale, {
     day: 'numeric', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
   });
 }
 
@@ -476,9 +477,15 @@ export default function LotDetail() {
               </div>
               <div className="detail-item">
                 <p className="detail-item__label">{t('verify.finalWeight')}</p>
-                <p className="detail-item__value">
+                <p className={`detail-item__value ${firstHandover?.weight_kg != null && Number(firstHandover.weight_kg) !== Number(lotMeta?.approx_weight_kg) ? 'detail-item__value--changed' : ''}`}>
                   {firstHandover?.weight_kg != null ? `${firstHandover.weight_kg} ${t('common.kg')}` : t('status.pending')}
                 </p>
+                {firstHandover?.weight_kg != null && Number(firstHandover.weight_kg) !== Number(lotMeta?.approx_weight_kg) && (
+                  <p className="detail-item__delta">
+                    {Number(firstHandover.weight_kg) > Number(lotMeta?.approx_weight_kg) ? '+' : ''}
+                    {(Number(firstHandover.weight_kg) - Number(lotMeta?.approx_weight_kg)).toFixed(1)} {t('common.kg')}
+                  </p>
+                )}
               </div>
               <div className="detail-item">
                 <p className="detail-item__label">{t('verify.collectionLocation')}</p>
@@ -502,6 +509,20 @@ export default function LotDetail() {
                   <p className="detail-item__value">{t('lotDetail.noHandover')}</p>
                 )}
               </div>
+              {firstHandover?.payment_status === 'paid' && (
+                <>
+                  <div className="detail-item">
+                    <p className="detail-item__label">{t('lotDetail.payFinalPrice')}</p>
+                    <p className="detail-item__value" style={{ color: 'var(--color-accent)', fontWeight: 'var(--weight-bold)' }}>
+                      {fmtRupees(firstHandover.final_price)}
+                    </p>
+                  </div>
+                  <div className="detail-item">
+                    <p className="detail-item__label">{t('lotDetail.payMethod')}</p>
+                    <p className="detail-item__value">{t(`lotDetail.payMethods.${firstHandover.payment_method ?? 'cash'}`)}</p>
+                  </div>
+                </>
+              )}
             </div>
             {collectionImages.length > 0 ? (
               <section className="collection-evidence" aria-label="Collector collection photos">

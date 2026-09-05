@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { getCollectors, loginCollector, loginRecycler, getAllRecyclers } from '../api/client';
+import { loginCollector, loginRecycler, getAllRecyclers } from '../api/client';
 import { saveSession } from '../services/auth';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
@@ -21,7 +21,6 @@ export default function Login({ location }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
-  const [collectors, setCollectors] = useState([]);
   const [recyclers, setRecyclers] = useState([]);
   const [phones, setPhones] = useState({ collector: '', recycler: '' });
   const [error, setError] = useState('');
@@ -29,11 +28,7 @@ export default function Login({ location }) {
 
   const from = location?.state?.from || '/collector';
 
-  // Load demo collector and recycler accounts so the screen can prefill quick sign-in chips.
   useEffect(() => {
-    getCollectors()
-      .then((r) => setCollectors(Array.isArray(r.data) ? r.data : []))
-      .catch(() => { });
     getAllRecyclers()
       .then((r) => setRecyclers((Array.isArray(r.data) ? r.data : []).filter((x) => x.authorization_status === 'authorized')))
       .catch(() => { });
@@ -132,23 +127,6 @@ export default function Login({ location }) {
             {busy ? <><LoadingSpinner size="sm" /> {t('login.signingIn')}…</> : <> {t('login.signIn')}</>}
           </button>
 
-          {collectors.length > 0 && (
-            <div className="login-demo" role="group" aria-label={t('login.demoAccounts')}>
-              <p className="login-demo__label">{t('login.demoAccounts')}</p>
-              {collectors.map((c) => (
-                <button
-                  key={c.id}
-                  className="demo-chip"
-                  onClick={() => handleCollectorLogin(c.phone)}
-                  disabled={busy}
-                >
-
-                  <span className="demo-chip__name">{c.name}</span>
-                  <span className="demo-chip__phone font-mono">{c.phone}</span>
-                </button>
-              ))}
-            </div>
-          )}
           <p className="login-hint">{t('login.phoneHint')}</p>
           <p className="login-hint login-register-link">
             {t('login.noAccount')}{' '}

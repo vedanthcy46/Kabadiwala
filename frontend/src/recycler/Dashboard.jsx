@@ -12,7 +12,7 @@ import './Dashboard.css';
 function fmtDate(d, lang) {
   if (!d) return '';
   const locale = lang === 'hi' ? 'hi-IN' : lang === 'mr' ? 'mr-IN' : 'en-IN';
-  return new Date(d).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+  return new Date(d).toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
 }
 
 export default function RecyclerDashboard() {

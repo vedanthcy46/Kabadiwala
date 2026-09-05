@@ -259,8 +259,6 @@ export const checkTransactionAnomaly = (payload) =>
   request('/anomaly/check', { method: 'POST', body: JSON.stringify(payload) });
 
 // ── Auth (collector accounts) ────────────────────────────────────────────────
-// GET /v1/collectors → demo accounts shown on the login screen
-export const getCollectors = () => request('/collectors');
 
 // POST /v1/collectors/login { phone } → { data: { collector, token } }
 export const loginCollector = (phone) =>
