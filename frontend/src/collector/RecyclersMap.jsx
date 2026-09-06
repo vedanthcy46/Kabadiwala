@@ -1,4 +1,25 @@
 import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
+import L from 'leaflet';
+
+const collectorIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
+
+const recyclerIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
 
 // Lightning-fast, concrete dataset of where the actual recyclers are. Each
 // matched recycler came from the backend with a real latitude/longitude, so
@@ -32,7 +53,7 @@ export default function RecyclersMap({ recyclers, center, radiusKm, selectedId, 
       )}
 
       {/* Collector location pin */}
-      <Marker position={[lat, lng]}>{/* default pin + radius ring mark "you are here" */}</Marker>
+      <Marker position={[lat, lng]} icon={collectorIcon}>{/* default pin + radius ring mark "you are here" */}</Marker>
 
       {recyclers.map((r) => {
         if (r.latitude == null || r.longitude == null) return null;
@@ -43,6 +64,7 @@ export default function RecyclersMap({ recyclers, center, radiusKm, selectedId, 
             key={`recycler-${id}`}
             position={[r.latitude, r.longitude]}
             title={r.name}
+            icon={recyclerIcon}
             zIndexOffset={isSelected ? 2000 : 0}
             eventHandlers={{
               click: () => onSelect?.(id),

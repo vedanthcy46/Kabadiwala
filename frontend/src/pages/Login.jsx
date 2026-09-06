@@ -18,7 +18,7 @@ import { useTranslation } from '../i18n/config.js';
 import './Login.css';
 
 export default function Login({ location }) {
-  const { t } = useTranslation();
+  const { t, setLang } = useTranslation();
   const navigate = useNavigate();
 
   const [recyclers, setRecyclers] = useState([]);
@@ -51,6 +51,7 @@ export default function Login({ location }) {
         operating_location: collector.operating_location,
         token,
       });
+      setLang(collector.preferred_language);
       navigate(from, { replace: true });
     } catch (err) {
       setError(err.message || t('login.loginFailed'));

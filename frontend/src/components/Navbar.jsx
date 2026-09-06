@@ -9,6 +9,7 @@ const LANG_OPTIONS = [
   { code: 'en', label: 'EN' },
   { code: 'hi', label: 'हिंदी' },
   { code: 'mr', label: 'मराठी' },
+  { code: 'kn', label: 'ಕನ್ನಡ' },
 ];
 
 function navFor(role, t) {

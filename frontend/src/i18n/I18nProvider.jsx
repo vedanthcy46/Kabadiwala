@@ -2,7 +2,7 @@
  * I18nProvider — wraps the application with multilingual support.
  *
  * Provides:
- *   lang    — current language code ('en' | 'hi' | 'mr')
+ *   lang    — current language code ('en' | 'hi' | 'mr' | 'kn')
  *   setLang — switch language (persists to localStorage)
  *   t(key, vars?) — translate a key with optional template variables
  *

@@ -17,15 +17,20 @@
  */
 
 import { createContext, useContext } from 'react';
+import { getSession } from '../services/auth';
 import en from './locales/en.json';
 import hi from './locales/hi.json';
 import mr from './locales/mr.json';
+import kn from './locales/kn.json';
 
-const LOCALES = { en, hi, mr };
-const SUPPORTED = ['en', 'hi', 'mr'];
+const LOCALES = { en, hi, mr, kn };
+const SUPPORTED = ['en', 'hi', 'mr', 'kn'];
 const STORAGE_KEY = 'kc_lang';
 
 function detectInitialLang() {
+  // Collector's account preference wins (set at registration/login)
+  const sessionLang = getSession()?.preferred_language;
+  if (sessionLang && SUPPORTED.includes(sessionLang)) return sessionLang;
   const stored = typeof localStorage !== 'undefined'
     ? localStorage.getItem(STORAGE_KEY)
     : null;

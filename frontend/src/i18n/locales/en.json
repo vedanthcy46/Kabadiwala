@@ -2,7 +2,8 @@
   "lang": {
     "en": "English",
     "hi": "हिंदी",
-    "mr": "मराठी"
+    "mr": "मराठी",
+    "kn": "ಕನ್ನಡ"
   },
   "nav": {
     "home": "Kabadiwala Connect",
@@ -518,8 +519,9 @@
     "language": "Preferred language",
     "lang": {
       "en": "English",
-      "hi": "Hindi",
-      "mr": "Marathi"
+      "hi": "हिंदी",
+      "mr": "मराठी",
+      "kn": "ಕನ್ನಡ"
     },
     "create": "Create account & sign in",
     "creating": "Creating account…",

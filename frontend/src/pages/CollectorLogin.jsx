@@ -11,7 +11,7 @@ import { useTranslation } from '../i18n/config.js';
 import './Login.css';
 
 export default function CollectorLogin() {
-  const { t } = useTranslation();
+  const { t, setLang } = useTranslation();
   const navigate = useNavigate();
 
   const [phone, setPhone] = useState('');
@@ -35,6 +35,7 @@ export default function CollectorLogin() {
         operating_location: collector.operating_location,
         token,
       });
+      setLang(collector.preferred_language);
       navigate('/collector', { replace: true });
     } catch (err) {
       setError(err.message || t('login.loginFailed'));

@@ -12,10 +12,10 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
 import './Login.css';
 
-const LANGUAGES = ['hi', 'en', 'mr'];
+const LANGUAGES = ['hi', 'en', 'mr', 'kn'];
 
 export default function Register() {
-  const { t } = useTranslation();
+  const { t, setLang } = useTranslation();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -56,6 +56,7 @@ export default function Register() {
         operating_location: collector.operating_location,
         token,
       });
+      setLang(collector.preferred_language);
       navigate('/collector', { replace: true });
     } catch (err) {
       setError(err.message || t('register.errSubmit'));
@@ -129,7 +130,7 @@ export default function Register() {
                   checked={form.preferred_language === lang}
                   onChange={() => setField('preferred_language', lang)}
                 />
-                <span>{t(`register.lang.${lang}`, { defaultValue: t(`lang.${lang}`) })}</span>
+                <span>{t(`register.lang.${lang}`)}</span>
               </label>
             ))}
           </fieldset>
