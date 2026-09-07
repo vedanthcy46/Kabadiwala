@@ -13,6 +13,7 @@ import {
 import { currentCollectorId } from '../services/auth';
 import { StatusBadge } from '../components/StatusBadge';
 import LotQR from '../components/LotQR';
+import MapLink from '../components/MapLink';
 import { PageLoader } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
 import './LotDetail.css';
@@ -561,7 +562,7 @@ export default function CollectorLotDetail() {
                   <p className="detail-item__label">GPS</p>
                   <p className="detail-item__value" style={{ fontSize: 'var(--text-sm)' }}>
                     {latestHandover.gps_lat != null && latestHandover.gps_lng != null
-                      ? `${Number(latestHandover.gps_lat).toFixed(4)}, ${Number(latestHandover.gps_lng).toFixed(4)}`
+                      ? <MapLink lat={latestHandover.gps_lat} lng={latestHandover.gps_lng} />
                       : t('verify.notRecorded')}
                   </p>
                 </div>

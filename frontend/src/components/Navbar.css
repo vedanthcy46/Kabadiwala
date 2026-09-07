@@ -299,6 +299,8 @@
     display: block !important;
   }
 
+  /* The drawer is portaled to <body>, so rules for its contents must be
+     unscoped (a `.navbar .mobile-lang-row` selector would never match). */
   .mobile-lang-row {
     display: block;
   }
@@ -392,8 +394,15 @@
   }
   :root { --nav-height: 56px; }
 
+  /* Language selection stays visible in the menu bar on small screens too. */
   .lang-switcher {
-    display: none;
+    display: flex;
+  }
+
+  .lang-dropdown {
+    max-width: 92px;
+    padding: 0 var(--space-2);
+    font-size: 10px;
   }
 }
 

@@ -1,4 +1,5 @@
 import express from 'express';
+import { query } from '../../db.js';
 import valuationRoute from './valuation.route.js';
 import recyclerRoute from './recycler.route.js';
 import priceRoute from './price.route.js';
@@ -69,9 +70,24 @@ defaultRoutes.forEach((route) => {
   router.use(route.path, route.route);
 });
 
-// A simple health-check endpoint
-router.get('/health', (req, res) => {
-  res.status(200).send({ status: 'UP' });
+// Health-check endpoint. Also used by external keep-alive monitors (Render
+// healthCheckPath, UptimeRobot / cron-job.org, GitHub Actions scheduler) that
+// ping this URL every few minutes to stop the free-tier service from sleeping.
+router.get('/health', async (req, res) => {
+  let db = 'UP';
+  try {
+    await query('SELECT 1');
+  } catch {
+    db = 'DOWN';
+  }
+
+  const ok = db === 'UP';
+  res.status(ok ? 200 : 503).json({
+    status: ok ? 'UP' : 'DEGRADED',
+    db,
+    uptime: Math.round(process.uptime()),
+    timestamp: new Date().toISOString(),
+  });
 });
 
 export default router;

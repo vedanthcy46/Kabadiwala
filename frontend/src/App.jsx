@@ -46,6 +46,14 @@ function AppInner() {
   }, []);
 
   const isLandingPage = location.pathname === '/';
+  const isAuthPage = [
+    '/login',
+    '/login/collector',
+    '/login/recycler',
+    '/login/admin',
+    '/collector/register',
+  ].includes(location.pathname);
+  const showNavbar = !isLandingPage && !isAuthPage && !(location.pathname === '/admin' && user?.role !== 'admin');
 
   // Root: redirect logged-in users to their dashboard
   if (location.pathname === '/') {
@@ -56,7 +64,7 @@ function AppInner() {
 
   return (
     <div className="page-shell">
-      {!isLandingPage && <Navbar />}
+      {showNavbar && <Navbar />}
       <main className="page-content" id="main-content">
         <Routes>
           <Route path="/" element={<Landing />} />

@@ -98,7 +98,7 @@ export function Navbar() {
         </nav>
 
         <div className="navbar__right">
-          <div className="lang-switcher hide-mobile" role="group" aria-label="Language / भाषा">
+          <div className="lang-switcher" role="group" aria-label="Language / भाषा">
             <select
               className="lang-dropdown"
               value={lang}

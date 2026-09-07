@@ -8,6 +8,7 @@ import {
 import { resolveRecyclerId } from '../services/auth';
 import { StatusBadge } from '../components/StatusBadge';
 import LotQR from '../components/LotQR';
+import MapLink from '../components/MapLink';
 import { PageLoader, LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
 import './LotDetail.css';
@@ -438,8 +439,8 @@ export default function LotDetail() {
                 <button type="button" className="btn btn-outline" onClick={captureGps} disabled={gpsState === 'locating'}>
                   {gpsState === 'locating' ? 'Capturing location…' : gpsState === 'ok' ? 'Location captured' : 'Capture pickup location'}
                 </button>
-                {gpsState === 'ok' && (
-                  <span className="verify-gps-ok">{Number(gps.lat).toFixed(4)}, {Number(gps.lng).toFixed(4)}</span>
+{gpsState === 'ok' && (
+                  <span className="verify-gps-ok"><MapLink lat={gps.lat} lng={gps.lng} /></span>
                 )}
                 {gpsState === 'unavailable' && (
                   <span className="text-muted text-sm">Location is required to begin pickup. Enable location access and try again.</span>
@@ -777,7 +778,7 @@ export default function LotDetail() {
                   </button>
                   {gpsState === 'ok' && (
                     <span className="verify-gps-ok">
-                       {t('verify.gpsRecorded')} {Number(gps.lat).toFixed(4)}, {Number(gps.lng).toFixed(4)}
+                       {t('verify.gpsRecorded')} <MapLink lat={gps.lat} lng={gps.lng} />
                     </span>
                   )}
                   {gpsState === 'unavailable' && (
@@ -841,7 +842,7 @@ export default function LotDetail() {
                   <p className="detail-item__label">GPS</p>
                   <p className="detail-item__value" style={{ fontSize: 'var(--text-sm)' }}>
                     {firstHandover.gps_lat != null && firstHandover.gps_lng != null
-                      ? `${Number(firstHandover.gps_lat).toFixed(4)}, ${Number(firstHandover.gps_lng).toFixed(4)}`
+                      ? <MapLink lat={firstHandover.gps_lat} lng={firstHandover.gps_lng} />
                       : t('verify.notRecorded')}
                   </p>
                 </div>

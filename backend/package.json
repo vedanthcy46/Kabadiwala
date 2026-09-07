@@ -15,6 +15,7 @@
     "migrate": "node src/migrate.js",
     "seed": "node src/seed.js",
     "reset": "node src/reset.js",
+    "keepalive": "node scripts/keepalive.js",
     "setup": "node src/setup.js",
     "setup:force": "node src/setup.js -- --force"
   },

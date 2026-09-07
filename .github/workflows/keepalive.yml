@@ -1,0 +1,32 @@
+name: Keep Backend Awake
+
+# Pings the deployed backend health endpoint every 5 minutes so the free-tier
+# web service never idles out. Set the BACKEND_HEALTH_URL repository secret to
+# your live health URL, e.g. https://your-backend.onrender.com/v1/health
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    name: Ping /v1/health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Curl health endpoint
+        env:
+          BACKEND_HEALTH_URL: ${{ secrets.BACKEND_HEALTH_URL }}
+        run: |
+          if [ -z "$BACKEND_HEALTH_URL" ]; then
+            echo "::warning::BACKEND_HEALTH_URL secret not set — add it in Settings → Secrets"
+            echo "::warning::Recommended: https://<your-backend>.onrender.com/v1/health"
+            exit 0
+          fi
+          code="$(curl -sS -o /tmp/health.out -w "%{http_code}" --max-time 30 "$BACKEND_HEALTH_URL")"
+          cat /tmp/health.out
+          echo ""
+          if [ "$code" != "200" ]; then
+            echo "::error::Health check failed with HTTP $code"
+            exit 1
+          fi
+          echo "Health check OK (HTTP $code)"

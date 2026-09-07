@@ -1,6 +1,7 @@
 import app from './app.js';
 import { logger } from './utils/logger.js';
 import { pool } from './db.js';
+import { startKeepAlive } from './utils/keepAlive.js';
 
 const PORT = process.env.PORT || 3000;
 
@@ -12,6 +13,7 @@ pool.query('SELECT NOW()')
     logger.info('Connected to PostgreSQL database');
     server = app.listen(PORT, () => {
       logger.info(`Listening to port ${PORT}`);
+      startKeepAlive();
     });
   })
   .catch((err) => {

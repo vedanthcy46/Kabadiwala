@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getLotEvents } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
+import MapLink from '../components/MapLink';
 import { PageLoader } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
 import './Traceability.css';
@@ -107,7 +108,7 @@ function buildDetail(eventType, metadata, t) {
 
     case 'GPS_CAPTURED':
       return m.latitude != null && m.longitude != null
-        ? `${Number(m.latitude).toFixed(4)}, ${Number(m.longitude).toFixed(4)}`
+        ? <MapLink lat={m.latitude} lng={m.longitude} />
         : null;
 
     case 'HANDOVER_CONFIRMED':
@@ -187,7 +188,7 @@ function TraceEvent({ event, images, isLast, t, lang }) {
         {/* GPS coordinates */}
         {hasGps && (
           <p className="trace-event__gps">
-            📍 {Number(event.latitude).toFixed(4)}, {Number(event.longitude).toFixed(4)}
+            <MapLink lat={event.latitude} lng={event.longitude} />
           </p>
         )}
 
@@ -410,7 +411,7 @@ export default function CollectorTraceability() {
                 <div className="detail-item">
                   <p className="detail-item__label">{t('verify.collectionGps')}</p>
                   <p className="detail-item__value" style={{ fontSize: 'var(--text-sm)' }}>
-                    📍 {Number(lot.collection_lat).toFixed(4)}, {Number(lot.collection_lng).toFixed(4)}
+                    <MapLink lat={lot.collection_lat} lng={lot.collection_lng} />
                   </p>
                 </div>
               )}
