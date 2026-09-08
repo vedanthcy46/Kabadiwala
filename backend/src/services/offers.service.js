@@ -1,5 +1,91 @@
 import { query } from '../db.js';
 import { ApiError } from '../utils/ApiError.js';
+import { resolvePricingLocation } from './valuation.service.js';
+
+/**
+ * Dynamically syncs a recycler's offered quote into the live prices board
+ * so that both the Recycler Rate Board and the City Price Trend update in real time.
+ */
+export const syncOfferPriceToBoard = async ({ recycler_id, lot_id, offered_price }) => {
+  if (!recycler_id || !lot_id || !offered_price || Number(offered_price) <= 0) return;
+
+  const lotRes = await query(
+    `SELECT m.category, m.approx_weight_kg, m.collection_lat, m.collection_lng, 
+            c.operating_location, c.latitude AS collector_lat, c.longitude AS collector_lng, 
+            r.facility_location, r.latitude AS recycler_lat, r.longitude AS recycler_lng
+     FROM materials m
+     LEFT JOIN collectors c ON m.collector_id = c.id
+     LEFT JOIN recyclers r ON r.id = $1
+     WHERE m.lot_id = $2 LIMIT 1`,
+    [recycler_id, lot_id]
+  );
+  if (lotRes.rows.length === 0) return;
+  const lot = lotRes.rows[0];
+  const weight = parseFloat(lot.approx_weight_kg);
+  if (!weight || weight <= 0) return;
+
+  const perKgRate = Math.round((parseFloat(offered_price) / weight) * 100) / 100;
+  const lat = lot.collection_lat ?? lot.collector_lat ?? lot.recycler_lat ?? null;
+  const lng = lot.collection_lng ?? lot.collector_lng ?? lot.recycler_lng ?? null;
+  const locStr = lot.operating_location || lot.facility_location || 'Bengaluru';
+  const resolvedLoc = resolvePricingLocation(locStr, lat, lng);
+  const category = lot.category;
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Categories to update (both canonical and alias)
+  const categoriesToUpdate = [category];
+  if (category === 'Mixed Plastic' && !categoriesToUpdate.includes('Plastic')) categoriesToUpdate.push('Plastic');
+  if (category === 'Plastic' && !categoriesToUpdate.includes('Mixed Plastic')) categoriesToUpdate.push('Mixed Plastic');
+  if (category === 'Motor/Magnet Assembly' && !categoriesToUpdate.includes('Motor')) categoriesToUpdate.push('Motor');
+  if (category === 'Motor' && !categoriesToUpdate.includes('Motor/Magnet Assembly')) categoriesToUpdate.push('Motor/Magnet Assembly');
+  if (category === 'LCD Panel' && !categoriesToUpdate.includes('LCD')) categoriesToUpdate.push('LCD');
+  if (category === 'LCD' && !categoriesToUpdate.includes('LCD Panel')) categoriesToUpdate.push('LCD Panel');
+
+  for (const cat of categoriesToUpdate) {
+    // 1. Upsert into prices table for this recycler
+    await query(
+      `INSERT INTO prices 
+         (material_category, location, price_date, buying_price, quoted_price, unit, recycler_id, market_range_low, market_range_high)
+       VALUES ($1, $2, $3, $4, $5, 'per_kg', $6, $7, $8)
+       ON CONFLICT ON CONSTRAINT prices_category_location_date_recycler_unique
+       DO UPDATE SET 
+         buying_price = EXCLUDED.buying_price,
+         quoted_price = EXCLUDED.quoted_price`,
+      [
+        cat,
+        resolvedLoc,
+        todayStr,
+        perKgRate,
+        perKgRate,
+        recycler_id,
+        Math.round(perKgRate * 0.9 * 100) / 100,
+        Math.round(perKgRate * 1.1 * 100) / 100,
+      ]
+    );
+
+    // 2. Dynamically update today's benchmark index (recycler_id IS NULL)
+    await query(
+      `INSERT INTO prices 
+         (material_category, location, price_date, buying_price, quoted_price, unit, recycler_id, market_range_low, market_range_high)
+       VALUES ($1, $2, $3, $4, $5, 'per_kg', NULL, $6, $7)
+       ON CONFLICT (material_category, location, price_date) WHERE recycler_id IS NULL
+       DO UPDATE SET 
+         buying_price = ROUND((prices.buying_price * 0.7 + EXCLUDED.buying_price * 0.3), 2),
+         quoted_price = ROUND((prices.quoted_price * 0.7 + EXCLUDED.quoted_price * 0.3), 2),
+         market_range_high = GREATEST(prices.market_range_high, EXCLUDED.quoted_price),
+         market_range_low = LEAST(prices.market_range_low, EXCLUDED.quoted_price)`,
+      [
+        cat,
+        resolvedLoc,
+        todayStr,
+        perKgRate,
+        perKgRate,
+        Math.round(perKgRate * 0.85 * 100) / 100,
+        Math.round(perKgRate * 1.15 * 100) / 100,
+      ]
+    );
+  }
+};
 
 // Keep the marketplace transitions in the same append-only evidence trail as
 // collection, handover and payment.  Event logging is deliberately non-fatal:
@@ -140,6 +226,9 @@ export const sendOffer = async (data) => {
       offered_price,
       recycler_name: recycler.name,
     });
+    await syncOfferPriceToBoard({ recycler_id, lot_id, offered_price }).catch((err) =>
+      console.error('[offers] Failed to sync offer price to board:', err.message)
+    );
     return updated;
   }
 
@@ -156,6 +245,9 @@ export const sendOffer = async (data) => {
     offered_price,
     recycler_name: recycler.name,
   });
+  await syncOfferPriceToBoard({ recycler_id, lot_id, offered_price }).catch((err) =>
+    console.error('[offers] Failed to sync offer price to board:', err.message)
+  );
   return created;
 };
 
@@ -195,6 +287,13 @@ export const respondToOffer = async (offerId, data) => {
     offered_price: data.offered_price,
     recycler_name: recyclerResult.rows[0]?.name ?? null,
   });
+  await syncOfferPriceToBoard({
+    recycler_id: offer.recycler_id,
+    lot_id: offer.lot_id,
+    offered_price: data.offered_price,
+  }).catch((err) =>
+    console.error('[offers] Failed to sync offer price to board:', err.message)
+  );
   return updated;
 };
 

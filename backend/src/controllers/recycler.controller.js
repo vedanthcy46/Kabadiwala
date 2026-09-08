@@ -41,7 +41,8 @@ export const getMatchedRecyclers = async (req, res) => {
     category,
     useLat,
     useLng,
-    maxDistanceKm
+    maxDistanceKm,
+    location
   );
 
   res.status(200).json({

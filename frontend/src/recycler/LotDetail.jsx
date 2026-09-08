@@ -78,6 +78,10 @@ export default function LotDetail() {
   // Physical→digital verification (QR scan bridge on handover)
   const [finalWeight, setFinalWeight] = useState('');
   const [verifyPhoto, setVerifyPhoto] = useState(null);
+  const [verifyPhotoMeta, setVerifyPhotoMeta] = useState(null);
+  const [verifyPhotoError, setVerifyPhotoError] = useState('');
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
   const [gps, setGps] = useState(null);
   const [gpsState, setGpsState] = useState('idle'); // idle | locating | ok | unavailable
 
@@ -240,11 +244,48 @@ export default function LotDetail() {
   }
 
   function handleVerifyPhoto(e) {
+    setVerifyPhotoError('');
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Validate image MIME type
+    if (!file.type || !file.type.startsWith('image/')) {
+      setVerifyPhotoError('Please select a valid image file (JPG, PNG, WebP).');
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    // Validate size (max 6MB)
+    const MAX_SIZE_BYTES = 6 * 1024 * 1024;
+    if (file.size > MAX_SIZE_BYTES) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      setVerifyPhotoError(`Selected image is ${sizeMb}MB. Maximum allowed size is 6MB. Please select a smaller photo.`);
+      if (e.target) e.target.value = '';
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onload = () => setVerifyPhoto(reader.result);
+    reader.onerror = () => {
+      setVerifyPhotoError('Failed to read image file. Please try taking or uploading the photo again.');
+    };
+    reader.onload = () => {
+      setVerifyPhoto(reader.result);
+      setVerifyPhotoMeta({
+        name: file.name || 'pickup-photo.jpg',
+        sizeKb: Math.round(file.size / 1024),
+      });
+      setVerifyPhotoError('');
+    };
     reader.readAsDataURL(file);
+    if (e.target) e.target.value = '';
+  }
+
+  function clearVerifyPhoto() {
+    setVerifyPhoto(null);
+    setVerifyPhotoMeta(null);
+    setVerifyPhotoError('');
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
   }
 
   // Prefill final price from the quoted price once the lot loads.
@@ -744,25 +785,75 @@ export default function LotDetail() {
               {/* Handover photograph */}
               <div className="form-group">
                 <span className="form-label">{t('verify.photoLabel')}</span>
+                
+                {verifyPhotoError && (
+                  <div className="alert-banner alert-banner--error animate-fade-in" style={{ marginBottom: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }} role="alert">
+                    {verifyPhotoError}
+                  </div>
+                )}
+
                 <div className="verify-photo-row">
+                  {/* Camera input with capture="environment" for live camera capture */}
                   <input
+                    ref={cameraInputRef}
                     type="file"
-                    id="verify-photo"
+                    id="verify-photo-camera"
                     accept="image/*"
                     capture="environment"
-                    className="form-input"
                     style={{ display: 'none' }}
                     onChange={handleVerifyPhoto}
                   />
-                  <label htmlFor="verify-photo" className="btn btn-outline">
-                    {verifyPhoto ? t('verify.photoChange') : t('verify.photoCapture')}
-                  </label>
+                  {/* Gallery / file chooser input without capture attribute so users can select from gallery or file system on mobile and desktop */}
+                  <input
+                    ref={galleryInputRef}
+                    type="file"
+                    id="verify-photo-gallery"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={handleVerifyPhoto}
+                  />
+
+                  <div style={{ display: 'inline-flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      onClick={() => cameraInputRef.current?.click()}
+                    >
+                      📸 {verifyPhoto ? t('verify.photoChange') : 'Take Live Photo'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      onClick={() => galleryInputRef.current?.click()}
+                    >
+                      🖼️ Upload from Gallery
+                    </button>
+                    {verifyPhoto && (
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        style={{ color: 'var(--color-destructive)' }}
+                        onClick={clearVerifyPhoto}
+                      >
+                        ✕ Remove
+                      </button>
+                    )}
+                  </div>
+
                   {verifyPhoto ? (
-                    <img
-                      src={verifyPhoto}
-                      alt={t('verify.photoCapturedAlt')}
-                      className="verify-photo-preview"
-                    />
+                    <div className="verify-photo-card animate-scale-in">
+                      <img
+                        src={verifyPhoto}
+                        alt={t('verify.photoCapturedAlt')}
+                        className="verify-photo-preview"
+                      />
+                      {verifyPhotoMeta && (
+                        <div className="verify-photo-info">
+                          <span className="verify-photo-name">{verifyPhotoMeta.name}</span>
+                          <span className="verify-photo-size text-muted text-xs">{verifyPhotoMeta.sizeKb} KB</span>
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <span className="text-muted text-sm">{t('verify.photoHint')}</span>
                   )}

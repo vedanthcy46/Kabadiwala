@@ -1,7 +1,8 @@
 import { query } from '../db.js';
 import { ApiError } from '../utils/ApiError.js';
+import { CITY_COORDS } from './location.service.js';
 
-const BENCHMARK_HUBS = [
+export const BENCHMARK_HUBS = [
   { name: 'Bengaluru', lat: 12.9716, lng: 77.5946 },
   { name: 'Chennai', lat: 13.0827, lng: 80.2707 },
   { name: 'Hyderabad', lat: 17.3850, lng: 78.4867 },
@@ -13,24 +14,57 @@ const BENCHMARK_HUBS = [
   { name: 'Kolkata', lat: 22.5726, lng: 88.3639 },
 ];
 
-function resolvePricingLocation(locStr) {
-  if (!locStr) return 'Bengaluru';
-  const coordsMatch = locStr.match(/(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/);
-  if (coordsMatch) {
-    const lat = parseFloat(coordsMatch[1]);
-    const lng = parseFloat(coordsMatch[2]);
-    let closest = 'Bengaluru';
-    let minD = Infinity;
-    for (const hub of BENCHMARK_HUBS) {
-      const d = Math.hypot(hub.lat - lat, hub.lng - lng);
-      if (d < minD) {
-        minD = d;
-        closest = hub.name;
-      }
+function findClosestHub(lat, lng) {
+  let closest = 'Bengaluru';
+  let minD = Infinity;
+  for (const hub of BENCHMARK_HUBS) {
+    const d = Math.hypot(hub.lat - lat, hub.lng - lng);
+    if (d < minD) {
+      minD = d;
+      closest = hub.name;
     }
-    return closest;
   }
-  return locStr.trim();
+  return closest;
+}
+
+export function resolvePricingLocation(locStr, lat = null, lng = null) {
+  // 1. Direct coordinates provided
+  if (lat != null && lng != null && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
+    return findClosestHub(Number(lat), Number(lng));
+  }
+
+  if (!locStr) return 'Bengaluru';
+
+  // 2. String contains coordinates "(lat, lng)"
+  const coordsMatch = String(locStr).match(/(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/);
+  if (coordsMatch) {
+    const latParsed = parseFloat(coordsMatch[1]);
+    const lngParsed = parseFloat(coordsMatch[2]);
+    if (!isNaN(latParsed) && !isNaN(lngParsed)) {
+      return findClosestHub(latParsed, lngParsed);
+    }
+  }
+
+  // 3. String matches or contains one of our benchmark hubs directly
+  const locLower = String(locStr).toLowerCase().trim();
+  for (const hub of BENCHMARK_HUBS) {
+    if (locLower === hub.name.toLowerCase() || locLower.includes(hub.name.toLowerCase())) {
+      return hub.name;
+    }
+  }
+
+  // 4. Match against extensive nationwide CITY_COORDS (all major Indian cities, clusters, states)
+  if (CITY_COORDS) {
+    if (CITY_COORDS[locLower]) {
+      return findClosestHub(CITY_COORDS[locLower].lat, CITY_COORDS[locLower].lng);
+    }
+    const hit = Object.entries(CITY_COORDS).find(([name]) => locLower.includes(name) || name.includes(locLower));
+    if (hit) {
+      return findClosestHub(hit[1].lat, hit[1].lng);
+    }
+  }
+
+  return 'Bengaluru';
 }
 
 /**

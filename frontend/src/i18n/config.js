@@ -56,12 +56,12 @@ function getKey(locale, key) {
 }
 
 /**
- * Fill {{varName}} placeholders in a translated string.
+ * Fill {{varName}} or {varName} placeholders in a translated string.
  */
 function interpolate(str, vars) {
   if (!vars || typeof str !== 'string') return str;
-  return str.replace(/\{\{(\w+)\}\}/g, (_, k) =>
-    vars[k] !== undefined ? String(vars[k]) : `{{${k}}}`
+  return str.replace(/\{\{?(\w+)\}?\}/g, (match, k) =>
+    vars[k] !== undefined ? String(vars[k]) : match
   );
 }
 

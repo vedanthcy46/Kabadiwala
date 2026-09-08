@@ -912,8 +912,8 @@
     "stopCamera": "Stop camera",
     "cameraUnavailable": "Camera unavailable or permission denied. Use manual entry instead.",
     "lookingUp": "Looking up lot record…",
-    "lotFound": "Lot {code} found. Opening the lot card…",
-    "notFound": "Lot {code} was not found or is not assigned to your facility.",
+    "lotFound": "Lot {{code}} found. Opening the lot card…",
+    "notFound": "Lot {{code}} was not found or is not assigned to your facility.",
     "lookupFail": "Could not reach the lot registry. Try again."
   },
   "verify": {
@@ -944,7 +944,7 @@
     "gpsUnavailable": "GPS unavailable — the handover can still be confirmed without coordinates.",
     "timestampNote": "Confirmation timestamp is recorded automatically when you confirm.",
     "confirmHandover": "Confirm handover & log verification",
-    "confirmSuccess": "Handover {reference} verified and confirmed.",
+    "confirmSuccess": "Handover {{reference}} verified and confirmed.",
     "recordTitle": "Digital handover record",
     "timestamp": "Verified at",
     "notRecorded": "Not recorded",

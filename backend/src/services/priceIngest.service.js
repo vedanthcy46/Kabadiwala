@@ -1,5 +1,6 @@
 import { pool, query } from '../db.js';
 import { ApiError } from '../utils/ApiError.js';
+import { resolvePricingLocation } from './valuation.service.js';
 
 /**
  * Bulk upsert recycler/market prices in a single transaction.
@@ -109,6 +110,7 @@ export const getRecyclerRates = async (recyclerId) => {
  * @returns {Promise<Array>}
  */
 export const getRecyclerRateBoard = async ({ category, location }) => {
+  const resolvedLoc = resolvePricingLocation(location);
   const result = await query(
     `SELECT
        r.id AS recycler_id,
@@ -121,19 +123,35 @@ export const getRecyclerRateBoard = async ({ category, location }) => {
        p.quoted_price AS offered_rate,
        p.price_date AS rate_date
      FROM recyclers r
-     LEFT JOIN LATERAL (
-       SELECT quoted_price, price_date
-       FROM prices
-       WHERE material_category = $1
-         AND location = $2
-         AND recycler_id = r.id
-       ORDER BY price_date DESC, id DESC
-       LIMIT 1
-     ) p ON true
-     WHERE r.authorization_status = 'authorized'
-       AND r.materials_accepted ? $1
-     ORDER BY r.id ASC`,
-    [category, location]
+      LEFT JOIN LATERAL (
+        SELECT quoted_price, price_date
+        FROM prices
+        WHERE (
+          material_category = $1
+          OR ($1 = 'Plastic' AND material_category IN ('Mixed Plastic', 'Plastics', 'Mixed Plastics'))
+          OR ($1 = 'Mixed Plastic' AND material_category = 'Plastic')
+          OR ($1 = 'Motor' AND material_category IN ('Motor/Magnet Assembly', 'Motors'))
+          OR ($1 = 'Motor/Magnet Assembly' AND material_category = 'Motor')
+          OR ($1 = 'LCD' AND material_category IN ('LCD Panel', 'LCD Panels'))
+          OR ($1 = 'LCD Panel' AND material_category = 'LCD')
+        )
+          AND (location = $2 OR location = $3 OR location = 'Bengaluru')
+          AND recycler_id = r.id
+        ORDER BY (location = $2) DESC, (location = $3) DESC, price_date DESC, id DESC
+        LIMIT 1
+      ) p ON true
+      WHERE r.authorization_status = 'authorized'
+        AND (
+          r.materials_accepted ? $1
+          OR ($1 = 'Plastic' AND (r.materials_accepted ? 'Mixed Plastic' OR r.materials_accepted ? 'Plastics' OR r.materials_accepted ? 'Mixed Plastics'))
+          OR ($1 = 'Mixed Plastic' AND (r.materials_accepted ? 'Plastic' OR r.materials_accepted ? 'Plastics'))
+          OR ($1 = 'Motor' AND (r.materials_accepted ? 'Motor/Magnet Assembly' OR r.materials_accepted ? 'Motors'))
+          OR ($1 = 'Motor/Magnet Assembly' AND (r.materials_accepted ? 'Motor' OR r.materials_accepted ? 'Motors'))
+          OR ($1 = 'LCD' AND (r.materials_accepted ? 'LCD Panel' OR r.materials_accepted ? 'LCD Panels'))
+          OR ($1 = 'LCD Panel' AND (r.materials_accepted ? 'LCD' OR r.materials_accepted ? 'LCD Panels'))
+        )
+      ORDER BY r.id ASC`,
+    [category, resolvedLoc, location]
   );
 
   return result.rows;

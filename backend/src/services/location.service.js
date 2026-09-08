@@ -10,7 +10,7 @@ import { ApiError } from '../utils/ApiError.js';
 const GEOCODE_CACHE = new Map();
 
 // Known Indian city centroids, e-waste industrial clusters, and metro hubs
-const CITY_COORDS = {
+export const CITY_COORDS = {
   // Karnataka & South
   bengaluru:        { lat: 12.9716, lng: 77.5946 },
   bangalore:        { lat: 12.9716, lng: 77.5946 },

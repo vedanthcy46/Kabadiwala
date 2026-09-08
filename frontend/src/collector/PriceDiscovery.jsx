@@ -17,7 +17,12 @@ import './PriceDiscoveryP2.css';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
-const LOCATIONS = ['Bengaluru', 'Delhi', 'Mumbai', 'Hyderabad', 'Chennai', 'Pune', 'Kolkata', 'Ahmedabad', 'Jaipur'];
+const LOCATIONS = [
+  'Bengaluru', 'Delhi', 'Mumbai', 'Hyderabad', 'Chennai', 'Pune', 'Kolkata', 'Ahmedabad', 'Jaipur',
+  'Surat', 'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Bhopal', 'Patna', 'Vadodara', 'Ghaziabad',
+  'Ludhiana', 'Agra', 'Nashik', 'Faridabad', 'Meerut', 'Rajkot', 'Varanasi', 'Coimbatore',
+  'Vijayawada', 'Chandigarh', 'Kochi', 'Noida', 'Gurugram', 'Mysuru', 'Visakhapatnam', 'Guwahati'
+];
 
 const BENCHMARK_HUBS = [
   { name: 'Bengaluru', lat: 12.9716, lng: 77.5946 },
@@ -306,7 +311,17 @@ export default function PriceDiscovery() {
   }
 
   const filteredRecyclers = [...rateRows]
-    .filter(r => (r.materials_accepted || []).includes(category))
+    .filter(r => {
+      const mats = r.materials_accepted || [];
+      if (mats.includes(category)) return true;
+      if (category === 'Plastic' && (mats.includes('Mixed Plastic') || mats.includes('Plastics') || mats.includes('Mixed Plastics'))) return true;
+      if (category === 'Mixed Plastic' && (mats.includes('Plastic') || mats.includes('Plastics'))) return true;
+      if (category === 'Motor' && (mats.includes('Motor/Magnet Assembly') || mats.includes('Motors'))) return true;
+      if (category === 'Motor/Magnet Assembly' && (mats.includes('Motor') || mats.includes('Motors'))) return true;
+      if (category === 'LCD' && (mats.includes('LCD Panel') || mats.includes('LCD Panels'))) return true;
+      if (category === 'LCD Panel' && (mats.includes('LCD') || mats.includes('LCD Panels'))) return true;
+      return false;
+    })
     .map(r => {
       const distance = userCoords
         ? calcDistanceKm(userCoords.lat, userCoords.lng, r.latitude, r.longitude)

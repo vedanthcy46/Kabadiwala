@@ -48,6 +48,22 @@ export const SCRAP_COMMODITY_BENCHMARKS = {
     driver: 'Cobalt, Lithium & Lead spot prices',
     subtypes: ['Li-Ion 18650/Pouch', 'Lead Acid UPS', 'NiMH'],
   },
+  Plastic: {
+    name: 'Mixed E-Waste Plastics (ABS / PC)',
+    basePrice: 16,
+    volatilityRange: [11, 24],
+    unit: 'per_kg',
+    driver: 'Crude polymer spot index + Secondary regrind demand',
+    subtypes: ['ABS Casings', 'Polycarbonate (PC)', 'Mixed E-Plastic Shred'],
+  },
+  Motor: {
+    name: 'Motors & Magnet Assemblies',
+    basePrice: 152,
+    volatilityRange: [125, 185],
+    unit: 'per_kg',
+    driver: 'MCX Copper wire scrap + Silicon steel core index',
+    subtypes: ['Electric Motors', 'Transformers', 'Alternator/Magnet Assemblies'],
+  },
 };
 
 // Regional market rate multipliers based on local industrial smelters, port access, and processing density
@@ -100,6 +116,11 @@ export const seedDynamicNationalPrices = async (days = 90) => {
           const highPrice = Math.round((dayPrice * 1.08) * 100) / 100;
 
           benchmarkRows.push([category, location, dateStr, dayPrice, dayPrice, bench.unit, null, lowPrice, highPrice]);
+          if (category === 'Plastic') {
+            benchmarkRows.push(['Mixed Plastic', location, dateStr, dayPrice, dayPrice, bench.unit, null, lowPrice, highPrice]);
+          } else if (category === 'Motor') {
+            benchmarkRows.push(['Motor/Magnet Assembly', location, dateStr, dayPrice, dayPrice, bench.unit, null, lowPrice, highPrice]);
+          }
         }
 
         // 2. Active recycler quoted rates for rate board & matching (current period)
@@ -109,12 +130,22 @@ export const seedDynamicNationalPrices = async (days = 90) => {
 
         for (const r of recyclers) {
           const accepted = Array.isArray(r.materials_accepted) ? r.materials_accepted : [];
-          if (accepted.includes(category)) {
+          const matchesCategory = accepted.includes(category)
+            || (category === 'Plastic' && (accepted.includes('Mixed Plastic') || accepted.includes('Plastics') || accepted.includes('Mixed Plastics')))
+            || (category === 'Motor' && (accepted.includes('Motor/Magnet Assembly') || accepted.includes('Motors')))
+            || (category === 'LCD' && (accepted.includes('LCD Panel') || accepted.includes('LCD Panels')));
+
+          if (matchesCategory) {
             // Recycler spread variation (+/- 2% to 5%)
             const recyclerSpread = ((r.id % 7) - 3) * 0.015;
             const recRate = Math.round((todayPrice * (1 + recyclerSpread)) * 100) / 100;
 
             recyclerRows.push([category, location, todayStr, recRate, recRate, bench.unit, r.id, lowPrice, highPrice]);
+            if (category === 'Plastic') {
+              recyclerRows.push(['Mixed Plastic', location, todayStr, recRate, recRate, bench.unit, r.id, lowPrice, highPrice]);
+            } else if (category === 'Motor') {
+              recyclerRows.push(['Motor/Magnet Assembly', location, todayStr, recRate, recRate, bench.unit, r.id, lowPrice, highPrice]);
+            }
           }
         }
       }

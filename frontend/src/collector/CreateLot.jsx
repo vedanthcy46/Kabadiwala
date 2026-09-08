@@ -78,6 +78,8 @@ export default function CreateLot() {
   const catObj = MATERIAL_CATEGORIES.find(c => c.id === category);
   const catMeta = (id) => MATERIAL_CATEGORIES.find(c => c.id === id);
 
+  const [photoError, setPhotoError] = useState('');
+
   function applySuggestion(id) {
     setCategory(id);
     setSubCategory('');
@@ -90,8 +92,37 @@ export default function CreateLot() {
   }
 
   function addPhotos(files) {
+    setPhotoError('');
+    const MAX_FILE_SIZE_BYTES = 6 * 1024 * 1024; // 6MB limit
+    const incoming = Array.from(files || []);
+    if (!incoming.length) return;
+
+    // Validate MIME types
+    const nonImages = incoming.filter(f => !f.type.startsWith('image/'));
+    if (nonImages.length > 0) {
+      setPhotoError('Only image files (JPG, PNG, WebP) are allowed.');
+      return;
+    }
+
+    // Validate individual file sizes
+    const oversized = incoming.filter(f => f.size > MAX_FILE_SIZE_BYTES);
+    if (oversized.length > 0) {
+      const names = oversized.map(f => `${f.name} (${(f.size / (1024 * 1024)).toFixed(1)}MB)`).join(', ');
+      setPhotoError(`Image exceeds maximum allowed size of 6MB: ${names}. Please choose a smaller photo.`);
+      return;
+    }
+
     const remaining = MAX_PHOTOS - photos.length;
-    const toAdd = Array.from(files).slice(0, remaining).map(file => ({
+    if (remaining <= 0) {
+      setPhotoError(`Maximum of ${MAX_PHOTOS} photos allowed per lot.`);
+      return;
+    }
+
+    if (incoming.length > remaining) {
+      setPhotoError(`Only ${remaining} more photo${remaining > 1 ? 's' : ''} can be added (maximum ${MAX_PHOTOS}).`);
+    }
+
+    const toAdd = incoming.slice(0, remaining).map(file => ({
       file,
       preview: URL.createObjectURL(file),
     }));
@@ -391,6 +422,12 @@ export default function CreateLot() {
               {t('createLot.photo.subtitle')}
             </p>
 
+            {photoError && (
+              <div className="alert-banner alert-banner--error animate-fade-in" style={{ marginBottom: 'var(--space-4)' }} role="alert">
+                {photoError}
+              </div>
+            )}
+
             {photos.length === 0 ? (
               <div
                 className="p2-dropzone"
@@ -443,15 +480,26 @@ export default function CreateLot() {
                 ))}
 
                 {photos.length < MAX_PHOTOS && (
-                  <button
-                    type="button"
-                    className="p2-gallery__add"
-                    onClick={() => fileInputRef.current?.click()}
-                    aria-label="Add another photo"
-                  >
-                    <span style={{ fontSize: 24 }}>+</span>
-                    <span>{t('createLot.photo.addMore', { count: MAX_PHOTOS - photos.length })}</span>
-                  </button>
+                  <div className="p2-gallery__add-group" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                    <button
+                      type="button"
+                      className="p2-gallery__add"
+                      onClick={() => cameraInputRef.current?.click()}
+                      aria-label="Take photo with camera"
+                    >
+                      <span style={{ fontSize: 20 }}>📸</span>
+                      <span>{t('createLot.photo.btnCamera')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="p2-gallery__add"
+                      onClick={() => fileInputRef.current?.click()}
+                      aria-label="Upload photo from files"
+                    >
+                      <span style={{ fontSize: 20 }}>🖼️</span>
+                      <span>{t('createLot.photo.btnUpload')}</span>
+                    </button>
+                  </div>
                 )}
               </div>
             )}

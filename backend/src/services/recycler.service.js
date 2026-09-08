@@ -1,4 +1,5 @@
 import { query } from '../db.js';
+import { resolvePricingLocation } from './valuation.service.js';
 
 /**
  * Matches collected lots with nearby authorized recyclers using a weighted
@@ -18,9 +19,11 @@ import { query } from '../db.js';
  * @param {number} lat - Collector latitude
  * @param {number} lng - Collector longitude
  * @param {number} maxDistanceKm - Maximum search radius
+ * @param {string} [location] - Location name if available
  * @returns {Promise<Array>}
  */
-export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm = 50) => {
+export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm = 50, location = null) => {
+  const resolvedLoc = resolvePricingLocation(location, lat, lng);
   let targetCat = category;
   if (category) {
     const c = String(category).trim().toUpperCase();
@@ -56,23 +59,48 @@ export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm
               ))
             )
           ) AS distance_km,
-          COALESCE(p.buying_price, 0) AS offered_rate
+          COALESCE(p.quoted_price, p.buying_price, m.quoted_price, m.buying_price, 0) AS offered_rate
         FROM recyclers r
         LEFT JOIN LATERAL (
-          SELECT buying_price 
+          SELECT quoted_price, buying_price 
           FROM prices 
           WHERE recycler_id = r.id AND (
             material_category = $3
-            OR ($3 = 'Motor' AND material_category = 'Motor/Magnet Assembly')
-            OR ($3 = 'LCD' AND material_category = 'LCD Panel')
-            OR ($3 = 'Plastic' AND material_category = 'Mixed Plastic')
-            OR ($3 = 'Motor/Magnet Assembly' AND material_category = 'Motor')
-            OR ($3 = 'LCD Panel' AND material_category = 'LCD')
+            OR ($3 = 'Plastic' AND material_category IN ('Mixed Plastic', 'Plastics', 'Mixed Plastics'))
             OR ($3 = 'Mixed Plastic' AND material_category = 'Plastic')
+            OR ($3 = 'Motor' AND material_category IN ('Motor/Magnet Assembly', 'Motors'))
+            OR ($3 = 'Motor/Magnet Assembly' AND material_category = 'Motor')
+            OR ($3 = 'LCD' AND material_category IN ('LCD Panel', 'LCD Panels'))
+            OR ($3 = 'LCD Panel' AND material_category = 'LCD')
+            OR ($3 = 'PCB' AND material_category IN ('PCBs', 'PCB'))
+            OR ($3 = 'Cable' AND material_category IN ('Cables', 'Cable'))
+            OR ($3 = 'Battery' AND material_category IN ('Batteries', 'Battery'))
+            OR ($3 = 'CRT' AND material_category IN ('CRTs', 'CRT'))
           )
-          ORDER BY price_date DESC, id DESC
+          AND (location = $5 OR location = 'Bengaluru')
+          ORDER BY (location = $5) DESC, price_date DESC, id DESC
           LIMIT 1
         ) p ON true
+        LEFT JOIN LATERAL (
+          SELECT quoted_price, buying_price 
+          FROM prices 
+          WHERE recycler_id IS NULL AND (
+            material_category = $3
+            OR ($3 = 'Plastic' AND material_category IN ('Mixed Plastic', 'Plastics', 'Mixed Plastics'))
+            OR ($3 = 'Mixed Plastic' AND material_category = 'Plastic')
+            OR ($3 = 'Motor' AND material_category IN ('Motor/Magnet Assembly', 'Motors'))
+            OR ($3 = 'Motor/Magnet Assembly' AND material_category = 'Motor')
+            OR ($3 = 'LCD' AND material_category IN ('LCD Panel', 'LCD Panels'))
+            OR ($3 = 'LCD Panel' AND material_category = 'LCD')
+            OR ($3 = 'PCB' AND material_category IN ('PCBs', 'PCB'))
+            OR ($3 = 'Cable' AND material_category IN ('Cables', 'Cable'))
+            OR ($3 = 'Battery' AND material_category IN ('Batteries', 'Battery'))
+            OR ($3 = 'CRT' AND material_category IN ('CRTs', 'CRT'))
+          )
+          AND (location = $5 OR location = 'Bengaluru')
+          ORDER BY (location = $5) DESC, price_date DESC, id DESC
+          LIMIT 1
+        ) m ON true
         WHERE r.authorization_status = 'authorized'
           AND (
             r.materials_accepted ? $3
@@ -180,7 +208,7 @@ export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm
       FROM Scored
       ORDER BY suitability DESC;
     `;
-    const res = await query(matchQuery, [lat, lng, targetCat, radius]);
+    const res = await query(matchQuery, [lat, lng, targetCat, radius, resolvedLoc]);
     return res.rows;
   };
 
