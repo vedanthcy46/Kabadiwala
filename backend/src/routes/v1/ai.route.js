@@ -1,5 +1,9 @@
 import express from 'express';
-import { recordAiFeedback, updateAiFeedback, getAiFeedbackStats } from '../../services/ai.service.js';
+import {
+  recordAiFeedback, updateAiFeedback, getAiFeedbackStats,
+  getAiDatasetSummary, getAiDatasetSamples, exportAiDatasetCsv,
+} from '../../services/ai.service.js';
+import { classify } from '../../services/aiInference.service.js';
 
 const router = express.Router();
 
@@ -28,6 +32,66 @@ router.get('/stats', async (req, res, next) => {
   try {
     const stats = await getAiFeedbackStats();
     res.json({ success: true, data: stats });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /v1/ai/classify
+// Pluggable material classifier. With AI_CLASSIFIER_PROVIDER=cloud the image
+// URL is sent to AI_CLASSIFY_ENDPOINT; otherwise a feature vector is scored with
+// the same heuristic the app runs on-device. Body:
+//   { imageUrl: string }  — required in cloud mode
+//   { features: object }  — required in heuristic mode (client-extracted colors/edges)
+router.post('/classify', async (req, res, next) => {
+  try {
+    const result = await classify(req.body || {});
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── AI dataset governance ─────────────────────────────────────────────────────
+
+// GET /v1/ai/dataset/summary — labelled-sample health: totals, per-category
+// breakdown, and monthly accuracy trend (all back by v_ai_dataset_* views).
+router.get('/dataset/summary', async (req, res, next) => {
+  try {
+    const data = await getAiDatasetSummary();
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /v1/ai/dataset/samples?outcome=&category=&limit=&offset= — recent labelled rows.
+router.get('/dataset/samples', async (req, res, next) => {
+  try {
+    const { outcome, category } = req.query;
+    const data = await getAiDatasetSamples({
+      outcome,
+      category,
+      limit: req.query.limit ? Number(req.query.limit) : 50,
+      offset: req.query.offset ? Number(req.query.offset) : 0,
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /v1/ai/dataset/export — CSV of validated samples (retraining input).
+router.get('/dataset/export', async (req, res, next) => {
+  try {
+    const csv = await exportAiDatasetCsv();
+    res
+      .status(200)
+      .set({
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="ai_training_dataset.csv"',
+      })
+      .send(csv);
   } catch (err) {
     next(err);
   }

@@ -8,6 +8,8 @@ export const registerCollectorSchema = {
       .trim()
       .regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit Indian phone number'),
     operating_location: z.string().trim().optional(),
+    latitude: z.number().optional().nullable(),
+    longitude: z.number().optional().nullable(),
     preferred_language: z.enum(['en', 'hi', 'mr', 'kn']).default('hi'),
   }),
 };

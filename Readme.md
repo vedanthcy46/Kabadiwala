@@ -9,6 +9,7 @@
 [`backend/docs/RUNNING.md`](backend/docs/RUNNING.md) — exact Postgres +
 migrate + seed + start steps, the `/v1` base URL, CORS, and a Vite proxy snippet.
 API reference: [`backend/docs/API.md`](backend/docs/API.md).
+Pricing & Ingestion Engine: [`docs/PRICE_TRENDS_AND_MARKET_INGESTION.md`](docs/PRICE_TRENDS_AND_MARKET_INGESTION.md).
 
 ---
 

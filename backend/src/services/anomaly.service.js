@@ -35,17 +35,40 @@ export const checkTransactionAnomaly = async (data) => {
 
   // Get current market range from prices table
   let marketRange = null;
-  if (location) {
-    const priceResult = await query(
+  const locCandidate = location ? location.trim() : 'Bengaluru';
+  let priceResult = await query(
+    `SELECT buying_price, market_range_low, market_range_high
+     FROM prices
+     WHERE material_category = $1 
+       AND (location = $2 OR location ILIKE $3 OR $2 ILIKE '%' || location || '%')
+     ORDER BY price_date DESC LIMIT 1`,
+    [material_category, locCandidate, `%${locCandidate}%`]
+  );
+
+  if (priceResult.rows.length === 0) {
+    // Fallback 1: Bengaluru market hub
+    priceResult = await query(
       `SELECT buying_price, market_range_low, market_range_high
        FROM prices
-       WHERE material_category = $1 AND location = $2
+       WHERE material_category = $1 AND location = 'Bengaluru'
        ORDER BY price_date DESC LIMIT 1`,
-      [material_category, location]
+      [material_category]
     );
-    if (priceResult.rows.length > 0) {
-      marketRange = priceResult.rows[0];
-    }
+  }
+
+  if (priceResult.rows.length === 0) {
+    // Fallback 2: Latest market benchmark across all locations
+    priceResult = await query(
+      `SELECT buying_price, market_range_low, market_range_high
+       FROM prices
+       WHERE material_category = $1
+       ORDER BY price_date DESC LIMIT 1`,
+      [material_category]
+    );
+  }
+
+  if (priceResult.rows.length > 0) {
+    marketRange = priceResult.rows[0];
   }
 
   const flags = [];
@@ -86,6 +109,77 @@ export const checkTransactionAnomaly = async (data) => {
     }
   }
 
+  // ── Quote Rate & Proportional Weight Check ─────────────────────────────────
+  let originalQuotedPrice = quoted_price != null ? parseFloat(quoted_price) : null;
+  let originalWeight = weight_kg != null ? parseFloat(weight_kg) : null;
+  let quoteStatus = null;
+
+  if (data.lot_id) {
+    try {
+      const origRes = await query(
+        `SELECT t.quoted_price, t.quantity_weight_kg, m.approx_weight_kg, o.offered_price
+         FROM transactions t
+         LEFT JOIN materials m ON t.lot_id = m.lot_id
+         LEFT JOIN offers o ON t.lot_id = o.lot_id AND o.offer_status = 'accepted'
+         WHERE t.lot_id = $1
+         LIMIT 1`,
+        [data.lot_id]
+      );
+      if (origRes.rows.length > 0) {
+        const row = origRes.rows[0];
+        if (row.offered_price != null) originalQuotedPrice = parseFloat(row.offered_price);
+        else if (row.quoted_price != null) originalQuotedPrice = parseFloat(row.quoted_price);
+        if (row.approx_weight_kg != null) originalWeight = parseFloat(row.approx_weight_kg);
+      }
+    } catch {
+      // Ignore database lookup errors during standalone check
+    }
+  }
+
+  const currentWeight = parseFloat(weight_kg);
+  const enteredPayout = final_price != null ? parseFloat(final_price) : parseFloat(quoted_price);
+
+  if (originalQuotedPrice && originalWeight && originalWeight > 0 && currentWeight > 0) {
+    const agreedRate = originalQuotedPrice / originalWeight;
+    const enteredRate = enteredPayout / currentWeight;
+    const expectedPayout = Math.round(agreedRate * currentWeight * 100) / 100;
+    const rateDiffPct = ((enteredRate - agreedRate) / agreedRate) * 100;
+    const priceDiff = enteredPayout - originalQuotedPrice;
+
+    if (rateDiffPct < -5) {
+      // Recycler is paying less per kg than agreed in the accepted quote
+      isAnomalous = true;
+      flags.push({
+        type: 'quote_rate_haircut',
+        message: `Payout rate (₹${enteredRate.toFixed(2)}/kg) is ${Math.abs(rateDiffPct).toFixed(1)}% below the accepted quote rate (₹${agreedRate.toFixed(2)}/kg). Expected ₹${expectedPayout.toFixed(2)}.`,
+        severity: Math.abs(rateDiffPct) > 15 ? 'high' : 'medium',
+      });
+      quoteStatus = {
+        type: 'underpayment',
+        message: `Payout rate is ${Math.abs(rateDiffPct).toFixed(1)}% lower than agreed quote rate.`,
+        agreed_rate: parseFloat(agreedRate.toFixed(2)),
+        effective_rate: parseFloat(enteredRate.toFixed(2)),
+        expected_payout: expectedPayout,
+      };
+    } else if (Math.abs(priceDiff) > 1 && Math.abs(rateDiffPct) <= 2) {
+      // Rate is honored, but price adjusted because weight changed on certified scale
+      quoteStatus = {
+        type: 'proportional_weight_adjustment',
+        message: `Payout adjusted from quoted ₹${originalQuotedPrice.toFixed(2)} to ₹${enteredPayout.toFixed(2)} due to scale weight change (${originalWeight} kg → ${currentWeight} kg) at the agreed quote rate of ₹${agreedRate.toFixed(2)}/kg.`,
+        agreed_rate: parseFloat(agreedRate.toFixed(2)),
+        original_quoted: originalQuotedPrice,
+        original_weight: originalWeight,
+        final_weight: currentWeight,
+      };
+    } else {
+      quoteStatus = {
+        type: 'matches_quote',
+        message: `Payout matches the accepted quote of ₹${originalQuotedPrice.toFixed(2)} at ₹${agreedRate.toFixed(2)}/kg.`,
+        agreed_rate: parseFloat(agreedRate.toFixed(2)),
+      };
+    }
+  }
+
   return {
     is_anomalous: isAnomalous,
     unit_price: parseFloat(unitPrice.toFixed(2)),
@@ -103,6 +197,7 @@ export const checkTransactionAnomaly = async (data) => {
           high: parseFloat(marketRange.market_range_high),
         }
       : null,
+    quote_status: quoteStatus,
     flags,
   };
 };

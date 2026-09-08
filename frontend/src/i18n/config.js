@@ -52,7 +52,7 @@ function getKey(locale, key) {
     if (node == null || typeof node !== 'object') return undefined;
     node = node[part];
   }
-  return typeof node === 'string' ? node : undefined;
+  return typeof node === 'string' || Array.isArray(node) ? node : undefined;
 }
 
 /**

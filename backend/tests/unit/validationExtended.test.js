@@ -13,10 +13,18 @@ describe('Recycler CRUD Validation', () => {
   describe('createRecyclerSchema', () => {
     const schema = createRecyclerSchema.body;
 
-    it('accepts valid recycler data', () => {
+    it('accepts valid recycler data with standard and frontend material IDs', () => {
       const result = schema.safeParse({
         name: 'Test Recycler',
-        materials_accepted: ['PCB'],
+        materials_accepted: ['PCB', 'Battery', 'Cable', 'Motor', 'LCD', 'CRT', 'Plastic'],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts valid recycler data with legacy long material names', () => {
+      const result = schema.safeParse({
+        name: 'Test Recycler',
+        materials_accepted: ['Motor/Magnet Assembly', 'LCD Panel', 'Mixed Plastic'],
       });
       expect(result.success).toBe(true);
     });
@@ -115,8 +123,8 @@ describe('Recycler CRUD Validation', () => {
       expect(result.data.page).toBe(2);
     });
 
-    it('rejects limit > 100', () => {
-      const result = schema.safeParse({ limit: '101' });
+    it('rejects limit > 1000', () => {
+      const result = schema.safeParse({ limit: '1001' });
       expect(result.success).toBe(false);
     });
   });

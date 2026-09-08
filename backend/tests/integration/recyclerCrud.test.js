@@ -73,6 +73,31 @@ describe('Recycler CRUD API', () => {
     }
   });
 
+  it('GET /v1/recyclers filters by name', async () => {
+    const res = await request(server)
+      .get('/v1/recyclers')
+      .query({ name: 'trishyirya' })
+      .expect(200);
+
+    expect(res.body.recyclers.length).toBeGreaterThan(0);
+    for (const recycler of res.body.recyclers) {
+      expect(recycler.name.toLowerCase()).toContain('trishyirya');
+    }
+  });
+
+  it('GET /v1/recyclers combines name + location filters', async () => {
+    const res = await request(server)
+      .get('/v1/recyclers')
+      .query({ name: 'parisaraa', location: 'karnataka' })
+      .expect(200);
+
+    expect(res.body.recyclers.length).toBeGreaterThan(0);
+    for (const recycler of res.body.recyclers) {
+      expect(recycler.name.toLowerCase()).toContain('parisaraa');
+    }
+    expect(res.body.pagination.total).toBeGreaterThan(0);
+  });
+
   it('GET /v1/recyclers/:id returns a recycler', async () => {
     const res = await request(server)
       .get('/v1/recyclers/1')

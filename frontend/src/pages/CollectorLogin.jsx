@@ -33,6 +33,8 @@ export default function CollectorLogin() {
         phone: collector.phone,
         preferred_language: collector.preferred_language,
         operating_location: collector.operating_location,
+        latitude: collector.latitude,
+        longitude: collector.longitude,
         token,
       });
       setLang(collector.preferred_language);

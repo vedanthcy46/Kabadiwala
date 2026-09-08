@@ -8,6 +8,7 @@ import {
   getHandoverSchema,
   getHandoversByLotSchema,
   getLotsByRecyclerSchema,
+  cancelLotSchema,
 } from '../../validations/handover.validation.js';
 
 const router = express.Router();
@@ -26,6 +27,9 @@ router.get('/lots/recycler/:recyclerId', validate(getLotsByRecyclerSchema), hand
 // Wildcard lot sub-routes
 router.get('/lots/:lotId/events', handoverController.getLotEvents);
 router.get('/lots/:lotId/images', handoverController.getLotImages);
+router.post('/lots/:lotId/cancel', validate(cancelLotSchema), handoverController.cancelOrDeleteLot);
+router.delete('/lots/:lotId', validate(cancelLotSchema), handoverController.cancelOrDeleteLot);
+
 
 // Handovers by lot
 router.get('/lot/:lotId', validate(getHandoversByLotSchema), handoverController.getHandoversByLot);

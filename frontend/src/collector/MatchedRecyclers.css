@@ -162,6 +162,33 @@
   transition: width 0.6s cubic-bezier(0.34,1.56,0.64,1);
 }
 
+/* Suitability score breakdown chips (explainable AI) */
+.recycler-card__scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.score-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.score-chip::before {
+  content: "●";
+  margin-right: var(--space-1);
+  font-size: 8px;
+  color: var(--color-primary);
+}
+
 /* Stats Row */
 .recycler-card__stats {
   display: grid;

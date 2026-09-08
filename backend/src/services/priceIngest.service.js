@@ -114,6 +114,8 @@ export const getRecyclerRateBoard = async ({ category, location }) => {
        r.id AS recycler_id,
        r.name,
        r.facility_location,
+       r.latitude,
+       r.longitude,
        r.pickup_availability,
        r.materials_accepted,
        p.quoted_price AS offered_rate,

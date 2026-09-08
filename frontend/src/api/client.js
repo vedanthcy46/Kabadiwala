@@ -41,7 +41,28 @@ const SKIP_KEYS = new Set([
   'reference',
   'client_id',
   'category',
+  'sub_category',
   'phone',
+  'contact',
+  'contact_details',
+  'name',
+  'facility_location',
+  'service_area',
+  'operating_location',
+  'location',
+  'address',
+  'authorization_number',
+  'authorization_details',
+  'verification_source',
+  'profile_image',
+  'image_ref',
+  'image_url',
+  'description',
+  'status',
+  'authorization_status',
+  'pickup_availability',
+  'pincode',
+  'postal_code',
 ]);
 
 function toNumberIfNumeric(value) {
@@ -84,7 +105,9 @@ async function request(path, options = {}) {
     }
 
     if (!res.ok) {
-      throw new Error(json?.message || `HTTP ${res.status}`);
+      const err = new Error(json?.message || `HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
     }
     return normalize(json);
   } catch (err) {
@@ -100,26 +123,44 @@ export const getInstantValuation = ({ category, location, weight }) =>
   request(`/valuation/instant?category=${encodeURIComponent(category)}&location=${encodeURIComponent(location)}&weight=${weight}`);
 
 // ── Recyclers ───────────────────────────────────────────────────────────────
-export const getMatchedRecyclers = ({ category, lat, lng, maxDistanceKm }) => {
-  let url = `/recyclers/match?category=${encodeURIComponent(category)}&lat=${lat}&lng=${lng}`;
-  if (maxDistanceKm) url += `&maxDistanceKm=${maxDistanceKm}`;
-  return request(url);
+export const getMatchedRecyclers = ({ category, lat, lng, maxDistanceKm, location } = {}) => {
+  const params = new URLSearchParams();
+  if (category) params.set('category', category);
+  if (lat != null && Number.isFinite(Number(lat))) params.set('lat', String(lat));
+  if (lng != null && Number.isFinite(Number(lng))) params.set('lng', String(lng));
+  if (location) params.set('location', location);
+  if (maxDistanceKm != null) params.set('maxDistanceKm', String(maxDistanceKm));
+  return request(`/recyclers/match?${params.toString()}`);
 };
 
-export const getAllRecyclers = () => request('/recyclers').then(r => ({
-  ...r,
-  data: Array.isArray(r.data) ? r.data : (r.data?.recyclers ?? r.recyclers ?? []),
-}));
+export const getAllRecyclers = ({ limit, location, name, authorization_status } = {}) => {
+  const params = new URLSearchParams();
+  if (limit) params.set('limit', String(limit));
+  if (location) params.set('location', location);
+  if (name) params.set('name', name);
+  if (authorization_status) params.set('authorization_status', authorization_status);
+  const qs = params.toString();
+  return request(qs ? `/recyclers?${qs}` : '/recyclers').then(r => ({
+    ...r,
+    data: Array.isArray(r.data) ? r.data : (r.data?.recyclers ?? r.recyclers ?? []),
+  }));
+};
 export const getRecycler = (id) => request(`/recyclers/${id}`);
 export const updateRecycler = (id, data) =>
   request(`/recyclers/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 
-// ── Price Trends ─────────────────────────────────────────────────────────────
+// ── Price Trends & Market Pulse ──────────────────────────────────────────────
 export const getPriceTrends = ({ category, location, days = 90 }) => {
   let url = `/prices/trends?category=${encodeURIComponent(category)}&days=${days}`;
   if (location) url += `&location=${encodeURIComponent(location)}`;
   return request(url);
 };
+
+export const getMarketPulse = (location = 'Bengaluru') =>
+  request(`/prices/market-pulse?location=${encodeURIComponent(location)}`);
+
+export const refreshMarketPrices = (days = 90) =>
+  request('/prices/refresh-market', { method: 'POST', body: JSON.stringify({ days }) });
 
 // Authorized recyclers that accept a category + their latest offered rate per location.
 export const getRecyclerRateBoard = ({ category, location }) =>
@@ -196,6 +237,22 @@ export const getLotEvents = (lotId) => request(`/handover/lots/${encodeURICompon
 export const getLotImages = (lotId) => request(`/handover/lots/${encodeURIComponent(lotId)}/images`);
 
 /**
+ * Cancel or Delete a lot (SIH 229 lifecycle policy)
+ */
+export const cancelLot = (lotId, data = {}) =>
+  request(`/handover/lots/${encodeURIComponent(lotId)}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const deleteLot = (lotId, data = {}) =>
+  request(`/handover/lots/${encodeURIComponent(lotId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify(data),
+  });
+
+
+/**
  * Get all lots for a collector.
  * ONLINE  → fetches from backend, caches result, returns { data, fromCache: false }
  * OFFLINE → returns cached data with { fromCache: true }
@@ -248,6 +305,23 @@ export const updateAiFeedback = (id, payload) =>
 
 // GET /v1/ai/stats — per-category accuracy (admin / dataset governance)
 export const getAiStats = () => request('/ai/stats');
+
+// POST /v1/ai/classify — pluggable material classifier (cloud model or feature-vector heuristic)
+export const classifyAi = (payload) =>
+  request('/ai/classify', { method: 'POST', body: JSON.stringify(payload) });
+
+// GET /v1/ai/dataset/summary — labelled-sample health (totals, per-category, trend)
+export const getAiDatasetSummary = () => request('/ai/dataset/summary');
+
+// GET /v1/ai/dataset/samples — recent labelled rows with optional filters
+export const getAiDatasetSamples = ({ outcome, category, limit, offset } = {}) => {
+  const q = new URLSearchParams();
+  if (outcome) q.set('outcome', outcome);
+  if (category) q.set('category', category);
+  if (limit) q.set('limit', String(limit));
+  if (offset) q.set('offset', String(offset));
+  return request(`/ai/dataset/samples?${q.toString()}`);
+};
 
 // ── Anomaly detection (AI/ML) ────────────────────────────────────────────────
 export const getAnomalies = ({ category } = {}) => {

@@ -1,13 +1,31 @@
 import { query } from '../db.js';
 import { ApiError } from '../utils/ApiError.js';
+import { resolveLocationCoords } from './location.service.js';
+
+// Ensure collectors table has coordinate columns
+let columnsEnsured = false;
+async function ensureCollectorCoordinateColumns() {
+  if (columnsEnsured) return;
+  try {
+    await query(`
+      ALTER TABLE collectors 
+      ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+    `);
+    columnsEnsured = true;
+  } catch (err) {
+    // Ignore if already exists or concurrent
+  }
+}
 
 /**
  * List all collector accounts (used by the login screen's "choose a demo account").
  * @returns {Promise<Object[]>}
  */
 export const getCollectors = async () => {
+  await ensureCollectorCoordinateColumns();
   const result = await query(
-    `SELECT id, name, phone, preferred_language, operating_location, created_at
+    `SELECT id, name, phone, preferred_language, operating_location, latitude, longitude, created_at
      FROM collectors
      ORDER BY id`
   );
@@ -15,24 +33,41 @@ export const getCollectors = async () => {
 };
 
 /**
- * Register a new collector account (minimal fields per SIH PS: avoid
- * unnecessary personal information).
- * @param {Object} data { name, phone, operating_location, preferred_language }
+ * Register a new collector account (with coordinates auto-resolution).
+ * @param {Object} data { name, phone, operating_location, latitude, longitude, preferred_language }
  * @returns {Promise<Object>}
  */
 export const registerCollector = async (data) => {
-  const { name, phone, operating_location, preferred_language } = data;
+  await ensureCollectorCoordinateColumns();
+  const { name, phone, operating_location, latitude, longitude, preferred_language } = data;
 
   const exists = await query('SELECT id FROM collectors WHERE phone = $1', [phone]);
   if (exists.rows.length > 0) {
     throw new ApiError(409, 'A collector account with this phone number already exists');
   }
 
+  let finalLat = latitude ?? null;
+  let finalLng = longitude ?? null;
+
+  if (finalLat == null || finalLng == null) {
+    if (operating_location) {
+      try {
+        const resolved = await resolveLocationCoords(operating_location);
+        finalLat = resolved.lat;
+        finalLng = resolved.lng;
+      } catch (err) {
+        // Fallback gracefully
+        finalLat = 12.9716;
+        finalLng = 77.5946;
+      }
+    }
+  }
+
   const result = await query(
-    `INSERT INTO collectors (name, phone, preferred_language, operating_location)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, name, phone, preferred_language, operating_location, created_at`,
-    [name, phone, preferred_language ?? 'hi', operating_location ?? null]
+    `INSERT INTO collectors (name, phone, preferred_language, operating_location, latitude, longitude)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, name, phone, preferred_language, operating_location, latitude, longitude, created_at`,
+    [name, phone, preferred_language ?? 'hi', operating_location ?? null, finalLat, finalLng]
   );
 
   return {
@@ -43,14 +78,13 @@ export const registerCollector = async (data) => {
 
 /**
  * Authenticate a collector by phone number.
- * A lightweight "login" for the SIH demo — identifies the account,
- * returns a mock token the frontend stores for the current session.
  * @param {string} phone
  * @returns {Promise<{collector: Object, token: string}>}
  */
 export const loginCollector = async (phone) => {
+  await ensureCollectorCoordinateColumns();
   const result = await query(
-    `SELECT id, name, phone, preferred_language, operating_location, created_at
+    `SELECT id, name, phone, preferred_language, operating_location, latitude, longitude, created_at
      FROM collectors
      WHERE phone = $1`,
     [phone]
@@ -64,8 +98,6 @@ export const loginCollector = async (phone) => {
 
   return {
     collector,
-    // Mock token — real auth (JWT/OTP) is a later phase; this is enough to
-    // drive a demo login session end-to-end.
     token: `mock-login-${collector.id}-${Date.now()}`,
   };
 };

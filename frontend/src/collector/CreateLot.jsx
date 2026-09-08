@@ -2,17 +2,17 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import {
   createLot, getInstantValuation,
-  DEMO_COLLECTOR_ID, DEFAULT_LOCATION, MATERIAL_CATEGORIES,
+  DEMO_COLLECTOR_ID, DEFAULT_LOCATION, DEFAULT_LAT, DEFAULT_LNG, MATERIAL_CATEGORIES,
   submitAiFeedback, updateAiFeedback,
 } from '../api/client';
-import { currentCollectorId } from '../services/auth';
+import { currentCollectorId, clearSession, getSession } from '../services/auth';
 import { classifyFile } from '../services/classification/analyze';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
 import './CreateLot.css';
 import './CreateLotP2.css';
 
-const LOCATIONS = ['Bengaluru', 'Mumbai', 'Delhi', 'Hyderabad', 'Chennai', 'Pune'];
+const LOCATIONS = ['Bengaluru', 'Delhi', 'Mumbai', 'Hyderabad', 'Chennai', 'Pune', 'Kolkata', 'Ahmedabad', 'Jaipur'];
 const MAX_PHOTOS = 3;
 
 function useDebounce(fn, delay) {
@@ -31,6 +31,7 @@ export default function CreateLot() {
 
   // Creating a lot requires a logged-in Kabadiwala account.
   const collectorId = currentCollectorId();
+  const session = getSession();
 
   const STEPS = [
     t('createLot.steps.photoCategory'),
@@ -43,7 +44,11 @@ export default function CreateLot() {
   const [category, setCategory] = useState('');
   const [subCategory, setSubCategory] = useState('');
   const [weight, setWeight] = useState('');
-  const [location, setLocation] = useState(DEFAULT_LOCATION);
+  const [location, setLocation] = useState(session?.operating_location || DEFAULT_LOCATION);
+  const [collectionLat, setCollectionLat] = useState(session?.latitude != null ? Number(session.latitude) : DEFAULT_LAT);
+  const [collectionLng, setCollectionLng] = useState(session?.longitude != null ? Number(session.longitude) : DEFAULT_LNG);
+  const [detectingGps, setDetectingGps] = useState(false);
+  const [gpsHint, setGpsHint] = useState('');
   const [description, setDescription] = useState('');
 
   const [classify, setClassify] = useState(null);
@@ -53,9 +58,7 @@ export default function CreateLot() {
   const [scanStep, setScanStep] = useState(0);
   const [scanProgress, setScanProgress] = useState(0);
 
-  // Pipeline reticle staged through while the classifier runs. Pure framing —
-  // the actual classification is the offline canvas heuristic in
-  // services/classification/analyze.js.
+  // Pipeline reticle staged through while the classifier runs.
   const PIPELINE = [
     'createLot.classification.pipeline.capture',
     'createLot.classification.pipeline.segment',
@@ -73,7 +76,6 @@ export default function CreateLot() {
   const [offlineSaved, setOfflineSaved] = useState(false);
 
   const catObj = MATERIAL_CATEGORIES.find(c => c.id === category);
-
   const catMeta = (id) => MATERIAL_CATEGORIES.find(c => c.id === id);
 
   function applySuggestion(id) {
@@ -81,7 +83,6 @@ export default function CreateLot() {
     setSubCategory('');
     setError('');
     setClassifyDismissed(true);
-    // Record human outcome: accepted if same as AI prediction, corrected otherwise
     if (aiFeedbackId && classify) {
       const outcome = id === classify.category ? 'accepted' : 'corrected';
       updateAiFeedback(aiFeedbackId, { human_category: id, outcome }).catch(() => {});
@@ -105,8 +106,6 @@ export default function CreateLot() {
     });
   }
 
-  // Compress the primary photo before sending it to the backend. The backend
-  // uploads it to Cloudinary and stores only the returned HTTPS URL.
   function fileToDataUrl(file, maxDim = 640, quality = 0.7) {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -138,6 +137,35 @@ export default function CreateLot() {
     addPhotos(e.dataTransfer.files);
   }
 
+  function handleDetectGps() {
+    if (!navigator.geolocation) {
+      setGpsHint('Geolocation is not supported by your browser');
+      return;
+    }
+    setDetectingGps(true);
+    setGpsHint('Acquiring precise GPS coordinates…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const latNum = parseFloat(latitude.toFixed(6));
+        const lngNum = parseFloat(longitude.toFixed(6));
+        setCollectionLat(latNum);
+        setCollectionLng(lngNum);
+        setLocation(`GPS Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+        setGpsHint(`📍 Coordinates detected: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+        setDetectingGps(false);
+        if (category && weight && Number(weight) > 0) {
+          fetchValuation(weight, category, `GPS Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+        }
+      },
+      () => {
+        setGpsHint('Could not access GPS. Using selected city.');
+        setDetectingGps(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }
+
   useEffect(() => {
     return () => photos.forEach(p => URL.revokeObjectURL(p.preview));
   }, []); // eslint-disable-line
@@ -151,7 +179,6 @@ export default function CreateLot() {
     setScanStep(0);
     setScanProgress(0);
 
-    // Drive the reticle animation while the real heuristic analysis runs.
     const tick = setInterval(() => {
       if (cancelled) return;
       setScanProgress((p) => Math.min(96, (p ?? 0) + (7 + Math.random() * 14)));
@@ -163,7 +190,6 @@ export default function CreateLot() {
         if (!cancelled) {
           setScanProgress(100);
           setClassify(res);
-          // Fire-and-forget: record the AI prediction to the feedback dataset
           submitAiFeedback({
             collector_id: collectorId ?? null,
             ai_predicted_category: res.category,
@@ -228,7 +254,6 @@ export default function CreateLot() {
   function goToStep2() {
     if (!category) { setError(t('createLot.errors.selectCategory')); return; }
     setError('');
-    // If collector manually picked a category without using the AI suggestion, record dismissal
     if (aiFeedbackId && classify && !classifyDismissed) {
       const outcome = category === classify.category ? 'accepted' : 'corrected';
       updateAiFeedback(aiFeedbackId, { human_category: category, outcome }).catch(() => {});
@@ -252,8 +277,6 @@ export default function CreateLot() {
       if (subCategory) descParts.push(`Sub-category: ${subCategory}`);
       if (description) descParts.push(description);
 
-      // Every selected collection photo becomes its own immutable Cloudinary
-      // evidence record. The first URL remains the lot cover image.
       const image_refs = await Promise.all(photos.map((photo) => fileToDataUrl(photo.file)));
 
       const r = await createLot({
@@ -261,6 +284,8 @@ export default function CreateLot() {
         category,
         approx_weight_kg: Number(weight),
         location,
+        collection_lat: collectionLat != null ? Number(collectionLat) : undefined,
+        collection_lng: collectionLng != null ? Number(collectionLng) : undefined,
         description: descParts.join(' | ') || undefined,
         image_refs: image_refs.filter(Boolean),
       });
@@ -276,10 +301,16 @@ export default function CreateLot() {
           lotId: r.data?.lot?.lot_id,
           category,
           location,
+          lat: collectionLat ?? session?.latitude,
+          lng: collectionLng ?? session?.longitude,
           valuation: r.data,
         },
       });
     } catch (err) {
+      if (err.status === 404 && /collector/i.test(err.message || '')) {
+        clearSession();
+        return navigate('/login', { replace: true, state: { from: '/collector/create-lot' } });
+      }
       setError(err.message || t('createLot.errors.submitFailed'));
       setCreating(false);
     }
@@ -306,7 +337,6 @@ export default function CreateLot() {
         <p className="section-subtitle">{t('createLot.subtitle')}</p>
       </div>
 
-      {/* Offline-first: lot captured and queued locally */}
       {offlineSaved && (
         <div className="step-panel animate-scale-in" role="status">
           <section className="card p2-offline-saved">
@@ -328,7 +358,6 @@ export default function CreateLot() {
       )}
 
       {!offlineSaved && (<>
-      {/* Stepper */}
       <div className="stepper animate-fade-in" role="list" aria-label="Progress steps">
         {STEPS.map((s, i) => (
           <div
@@ -351,217 +380,199 @@ export default function CreateLot() {
         </div>
       )}
 
-      {/* STEP 0 — Photo + Category */}
       {step === 0 && (
-        <div className="step-panel animate-scale-in">
-          <section className="card p2-photo-section" aria-labelledby="photo-heading">
-            <div className="p2-section-header">
-              <h2 id="photo-heading" className="p2-section-title">
-                
-                {t('createLot.photos.heading')}
-              </h2>
-              <span className="p2-photo-count">
-                {t('createLot.photos.count', { current: photos.length, max: MAX_PHOTOS })}
-              </span>
-            </div>
-
-            <div className="p2-upload-btns">
-              <button
-                className="btn btn-outline p2-upload-btn"
-                onClick={() => cameraInputRef.current?.click()}
-                disabled={photos.length >= MAX_PHOTOS}
-                aria-label={t('createLot.photos.cameraLabel')}
-              >
-                 {t('createLot.photos.camera')}
-              </button>
-              <button
-                className="btn btn-outline p2-upload-btn"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={photos.length >= MAX_PHOTOS}
-                aria-label={t('createLot.photos.uploadLabel')}
-              >
-                 {t('createLot.photos.upload')}
-              </button>
-              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment"
-                onChange={e => addPhotos(e.target.files)} style={{ display: 'none' }} />
-              <input ref={fileInputRef} type="file" accept="image/*" multiple
-                onChange={e => addPhotos(e.target.files)} style={{ display: 'none' }} />
-            </div>
+        <div className="step-panel animate-slide-up">
+          <section className="card p2-section" aria-labelledby="photo-heading">
+            <h2 id="photo-heading" className="p2-section-title">
+              {t('createLot.photo.heading')}
+              <span className="p2-optional">{t('createLot.photo.optional')}</span>
+            </h2>
+            <p className="p2-section-subtitle">
+              {t('createLot.photo.subtitle')}
+            </p>
 
             {photos.length === 0 ? (
               <div
-                className="photo-drop"
-                onDrop={handleDrop}
+                className="p2-dropzone"
                 onDragOver={e => e.preventDefault()}
-                onClick={() => fileInputRef.current?.click()}
-                role="button" tabIndex={0}
-                aria-label={t('createLot.photos.dropLabel')}
-                onKeyDown={e => e.key === 'Enter' && fileInputRef.current?.click()}
+                onDrop={handleDrop}
+                role="region"
+                aria-label="Photo upload area"
               >
-                <div className="photo-placeholder">
-                  
-                  <p style={{ fontWeight: 'var(--weight-semibold)' }}>
-                    {t('createLot.photos.dragDrop')}
-                  </p>
-                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-                    {t('createLot.photos.dropHint', { max: MAX_PHOTOS })}
-                  </p>
+                <div className="p2-dropzone__icon" aria-hidden="true">📷</div>
+                <p className="p2-dropzone__text">
+                  <strong>{t('createLot.photo.tapCamera')}</strong>
+                </p>
+                <p className="p2-dropzone__hint">
+                  {t('createLot.photo.formats')}
+                </p>
+                <div className="p2-dropzone__buttons">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => cameraInputRef.current?.click()}
+                  >
+                    📸 {t('createLot.photo.btnCamera')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    🖼️ {t('createLot.photo.btnUpload')}
+                  </button>
                 </div>
               </div>
             ) : (
-              <div className="p2-photo-grid">
+              <div className="p2-gallery">
                 {photos.map((p, idx) => (
-                  <div key={idx} className="p2-photo-thumb">
-                    <img src={p.preview} alt={`Scrap photo ${idx + 1}`} />
+                  <div key={idx} className="p2-gallery__item animate-scale-in">
+                    <img src={p.preview} alt={`Evidence ${idx + 1}`} className="p2-gallery__img" />
+                    {idx === 0 && (
+                      <span className="p2-gallery__badge">{t('createLot.photo.badgeCover')}</span>
+                    )}
                     <button
-                      className="p2-photo-remove"
+                      type="button"
+                      className="p2-gallery__remove"
                       onClick={() => removePhoto(idx)}
-                      aria-label={t('createLot.photos.removePhoto', { n: idx + 1 })}
+                      aria-label={t('createLot.photo.removePhoto', { n: idx + 1, index: idx + 1 })}
                     >
-                      
+                      ×
                     </button>
-                    {idx === 0 && <span className="p2-photo-primary-badge">{t('createLot.photos.primary')}</span>}
-
-                    {/* AI scanning reticle overlay on the primary photo */}
-                    {idx === 0 && (classifying) && (
-                      <div className="p2-scan p2-scan--active" aria-hidden="true">
-                        <div className="p2-scan__scanline" />
-                        <div className="p2-scan__corner p2-scan__corner--tl" />
-                        <div className="p2-scan__corner p2-scan__corner--tr" />
-                        <div className="p2-scan__corner p2-scan__corner--bl" />
-                        <div className="p2-scan__corner p2-scan__corner--br" />
-                        <div className="p2-scan__progress" style={{ width: `${scanProgress}%` }} />
-                        <div className="p2-scan__status">
-                          <span className="p2-scan__dot" />
-                          {t(PIPELINE[scanStep])}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Detection result chip once analysed */}
-                    {idx === 0 && classify && !classifyDismissed && category !== classify.category && !classifying && (
-                      <div className="p2-scan p2-scan--done" aria-hidden="true">
-                        <div className="p2-scan__done-ring" style={{ ['--conf' ]: classify.confidence }}>
-                          <span className="p2-scan__done-pct">
-                            {Math.round(classify.confidence * 100)}%
-                          </span>
-                        </div>
-                        <div className="p2-scan__done-label">
-                          {catObj && t('createLot.classification.detected', { label: catObj.label })}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ))}
+
                 {photos.length < MAX_PHOTOS && (
-                  <div
-                    className="p2-photo-add"
+                  <button
+                    type="button"
+                    className="p2-gallery__add"
                     onClick={() => fileInputRef.current?.click()}
-                    role="button" tabIndex={0}
-                    onKeyDown={e => e.key === 'Enter' && fileInputRef.current?.click()}
-                    aria-label={t('createLot.photos.addPhoto')}
+                    aria-label="Add another photo"
                   >
-                    <span aria-hidden="true" style={{ fontSize: 28 }}>+</span>
-                    <span style={{ fontSize: 'var(--text-xs)' }}>{t('createLot.photos.addPhoto')}</span>
-                  </div>
+                    <span style={{ fontSize: 24 }}>+</span>
+                    <span>{t('createLot.photo.addMore', { count: MAX_PHOTOS - photos.length })}</span>
+                  </button>
                 )}
+              </div>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              style={{ display: 'none' }}
+              onChange={e => { if (e.target.files?.length) addPhotos(e.target.files); e.target.value = ''; }}
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={e => { if (e.target.files?.length) addPhotos(e.target.files); e.target.value = ''; }}
+            />
+
+            {classifying && (
+              <div className="p2-ai-banner p2-ai-banner--scanning animate-fade-in" role="status">
+                <div className="p2-ai-banner__header">
+                  <span className="p2-ai-banner__sparkle" aria-hidden="true">✨</span>
+                  <div className="p2-ai-banner__title-wrap">
+                    <strong>{t('createLot.classification.scanning')}</strong>
+                    <span className="p2-ai-banner__meta">
+                      {t(PIPELINE[scanStep])} ({Math.round(scanProgress)}%)
+                    </span>
+                  </div>
+                  <LoadingSpinner size="sm" />
+                </div>
+                <div className="p2-ai-banner__bar" role="progressbar" aria-valuenow={Math.round(scanProgress)} aria-valuemin={0} aria-valuemax={100}>
+                  <div className="p2-ai-banner__fill" style={{ width: `${scanProgress}%` }} />
+                </div>
+              </div>
+            )}
+
+            {!classifying && classify && !classifyDismissed && (
+              <div className="p2-ai-banner p2-ai-banner--suggest animate-slide-up" role="region" aria-label="AI classification suggestion">
+                <div className="p2-ai-banner__top">
+                  <div className="p2-ai-banner__sparkle" aria-hidden="true">✨</div>
+                  <div className="p2-ai-banner__body">
+                    <div className="p2-ai-banner__category">
+                      {t('createLot.classification.detected', { label: catMeta(classify.category)?.label || classify.category })}
+                      <span className={`p2-ai-pill p2-ai-pill--${classify.verdict}`}>
+                        {Math.round(classify.confidence * 100)}% {t('createLot.classification.match')}
+                      </span>
+                    </div>
+                    {classify.reason && (
+                      <p className="p2-ai-banner__reason">{classify.reason}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p2-ai-banner__actions">
+                  <button
+                    type="button"
+                    className="btn btn-accent btn-sm"
+                    onClick={() => applySuggestion(classify.category)}
+                  >
+                    ✓ {t('createLot.classification.useCategory', { name: catMeta(classify.category)?.label || classify.category })}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setClassifyDismissed(true)}
+                  >
+                    {t('createLot.classification.chooseOther')}
+                  </button>
+                </div>
               </div>
             )}
           </section>
 
-          {(classifying || (classify && !classifyDismissed && category !== classify.category)) && (
-            <section className="card p2-classify" aria-live="polite" aria-label={t('createLot.classification.suggested')}>
-              {classifying ? (
-                <div className="p2-classify-row p2-classify-row--busy">
-                  <div className="p2-classify-busy">
-                    <LoadingSpinner size="sm" />
-                    <span className="p2-classify-busy__step">{t(PIPELINE[scanStep])}</span>
-                    <span className="p2-classify-busy__progress">{Math.round(scanProgress)}%</span>
-                  </div>
-                  <div className="p2-classify-busy__bar">
-                    <div className="p2-classify-busy__bar-fill" style={{ width: `${scanProgress}%` }} />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="p2-classify-head">
-                    <span className="p2-classify-badge">{t('createLot.classification.autoSuggest')}</span>
-                    <span className={`p2-classify-conf p2-classify-conf--${classify.verdict}`}>
-                      {classify.verdict === 'high' && t('createLot.classification.confidenceHigh')}
-                      {classify.verdict === 'medium' && t('createLot.classification.confidenceMedium')}
-                      {classify.verdict === 'low' && t('createLot.classification.confidenceLow')}
-                    </span>
-                  </div>
-                  <div className="p2-classify-pick">
-                    {(() => { const m = catMeta(classify.category); return (
-                      <button className="p2-classify-main" onClick={() => applySuggestion(classify.category)}>
-                        <span className="category-btn__icon" aria-hidden="true">{m?.icon}</span>
-                        <span className="p2-classify-main__label">{m?.label}</span>
-                      </button>
-                    ); })()}
-                    <button className="btn btn-primary btn-sm" onClick={() => applySuggestion(classify.category)}>
-                      {t('createLot.classification.use')}
-                    </button>
-                    <button className="btn btn-outline btn-sm" onClick={() => setClassifyDismissed(true)}>
-                      {t('createLot.classification.dismiss')}
-                    </button>
-                  </div>
-                  <div className="p2-classify-alts">
-                    <span className="p2-classify-alts__label">{t('createLot.classification.alternatives')}:</span>
-                    {classify.candidates.slice(1).map(c => { const m = catMeta(c.category); return (
-                      <button key={c.category} className="p2-classify-alt" onClick={() => applySuggestion(c.category)}>
-                        <span className="p2-classify-alt__bar" style={{ width: `${Math.round(c.confidence * 100)}%` }} />
-                        <span className="p2-classify-alt__label">{m?.icon} {m?.label}</span>
-                        <span className="p2-classify-alt__pct">{Math.round(c.confidence * 100)}%</span>
-                      </button>
-                    ); })}
-                  </div>
-                </>
-              )}
-            </section>
-          )}
+          <section className="card p2-section" aria-labelledby="cat-heading">
+            <h2 id="cat-heading" className="p2-section-title">
+              {t('createLot.category.heading')}
+            </h2>
+            <p className="p2-section-subtitle">
+              {t('createLot.category.subtitle')}
+            </p>
 
-          <section className="card" aria-labelledby="cat-heading">
-            <div className="p2-section-header">
-              <h2 id="cat-heading" className="p2-section-title">
-                
-                {t('createLot.category.heading')}
-              </h2>
-              {category && (
-                <span className="p2-selected-badge">
-                  {catObj?.icon} {catObj?.label}
-                </span>
-              )}
+            <div className="p2-cat-grid" role="group" aria-label="Material categories">
+              {MATERIAL_CATEGORIES.map(cat => {
+                const isSelected = category === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    className={`p2-cat-card ${isSelected ? 'p2-cat-card--selected' : ''}`}
+                    onClick={() => {
+                      setCategory(cat.id);
+                      setSubCategory('');
+                      setError('');
+                    }}
+                    aria-pressed={isSelected}
+                  >
+                    <span className="p2-cat-card__icon" aria-hidden="true">{cat.icon}</span>
+                    <span className="p2-cat-card__label">{cat.label}</span>
+                    {isSelected && (
+                      <span className="p2-cat-card__check" aria-hidden="true">✓</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="category-grid" role="group" aria-label={t('createLot.category.label')}>
-              {MATERIAL_CATEGORIES.map(cat => (
-                <button
-                  key={cat.id}
-                  className={`category-btn ${category === cat.id ? 'category-btn--selected' : ''}`}
-                  onClick={() => { setCategory(cat.id); setSubCategory(''); setError(''); }}
-                  aria-pressed={category === cat.id}
-                >
-                  <span className="category-btn__icon" aria-hidden="true">{cat.icon}</span>
-                  <span className="category-btn__label">{cat.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {catObj && (
-              <div className="p2-subcat-wrap" aria-labelledby="subcat-label">
-                <p id="subcat-label" className="form-label">
-                  {t('createLot.category.subCategory')}{' '}
-                  <span style={{ fontWeight: 'normal', color: 'var(--color-text-muted)' }}>
-                    {t('common.optional')}
-                  </span>
-                </p>
-                <div className="p2-subcat-pills" role="group" aria-label={t('createLot.category.subCategoryLabel')}>
+            {catObj?.sub && catObj.sub.length > 0 && (
+              <div className="p2-subcat-wrap animate-fade-in">
+                <label className="form-label" style={{ marginBottom: 'var(--space-2)' }}>
+                  {t('createLot.category.subType')}
+                </label>
+                <div className="p2-subcat-pills" role="group" aria-label="Sub-categories">
                   {catObj.sub.map(s => (
                     <button
                       key={s}
+                      type="button"
                       className={`p2-subcat-pill ${subCategory === s ? 'p2-subcat-pill--active' : ''}`}
-                      onClick={() => setSubCategory(prev => prev === s ? '' : s)}
+                      onClick={() => setSubCategory(subCategory === s ? '' : s)}
                       aria-pressed={subCategory === s}
                     >
                       {s}
@@ -572,180 +583,163 @@ export default function CreateLot() {
             )}
           </section>
 
-          <button
-            className="btn btn-primary btn-lg btn-full"
-            onClick={goToStep2}
-            disabled={!category}
-          >
-            {t('createLot.buttons.nextWeight')}
-          </button>
+          <div className="form-actions">
+            <Link to="/collector" className="btn btn-outline">{t('common.cancel')}</Link>
+            <button
+              className="btn btn-primary btn-lg"
+              onClick={goToStep2}
+              disabled={!category}
+            >
+              {t('createLot.actions.continueWeight')}
+            </button>
+          </div>
         </div>
       )}
 
-      {/* STEP 1 — Weight + Live Valuation */}
       {step === 1 && (
-        <div className="step-panel animate-scale-in">
-          <section className="card" aria-labelledby="weight-heading">
-            <h2 id="weight-heading" className="p2-section-title" style={{ marginBottom: 'var(--space-6)' }}>
-              
+        <div className="step-panel animate-slide-up">
+          <section className="card p2-section" aria-labelledby="weight-heading">
+            <h2 id="weight-heading" className="p2-section-title">
               {t('createLot.weight.heading')}
             </h2>
+            <p className="p2-section-subtitle">
+              {t('createLot.weight.subtitle')}
+            </p>
 
-            <div className="p2-weight-section">
-              <label className="form-label" htmlFor="weight-input">
-                {t('createLot.weight.label')}
-              </label>
-              <div className="p2-weight-stepper" aria-label={t('createLot.weight.stepperLabel')}>
-                <button
-                  className="p2-weight-btn"
-                  onClick={() => incrementWeight(-1)}
-                  aria-label={t('createLot.weight.decrease')}
-                  disabled={Number(weight) <= 0.1}
-                >−</button>
-                <div className="p2-weight-input-wrap">
-                  <input
-                    id="weight-input"
-                    type="number"
-                    className="form-input p2-weight-input"
-                    placeholder="0.0"
-                    min="0.1"
-                    step="0.1"
-                    value={weight}
-                    onChange={e => handleWeightChange(e.target.value)}
-                    aria-describedby="weight-hint"
-                  />
-                  <span className="weight-unit" aria-hidden="true">kg</span>
-                </div>
-                <button
-                  className="p2-weight-btn"
-                  onClick={() => incrementWeight(1)}
-                  aria-label={t('createLot.weight.increase')}
-                >+</button>
+            <div className="p2-weight-stepper">
+              <button
+                type="button"
+                className="p2-weight-stepper__btn"
+                onClick={() => incrementWeight(-1)}
+                disabled={!weight || Number(weight) <= 0.5}
+                aria-label="Decrease 1 kg"
+              >
+                −1
+              </button>
+              <div className="p2-weight-stepper__input-wrap">
+                <input
+                  id="lot-weight"
+                  className="p2-weight-stepper__input font-mono"
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  placeholder="0.0"
+                  value={weight}
+                  onChange={e => handleWeightChange(e.target.value)}
+                  autoFocus
+                />
+                <span className="p2-weight-stepper__unit">kg</span>
               </div>
-              <p id="weight-hint" className="form-hint">
-                {t('createLot.weight.hint')}
-              </p>
+              <button
+                type="button"
+                className="p2-weight-stepper__btn"
+                onClick={() => incrementWeight(1)}
+                aria-label="Increase 1 kg"
+              >
+                +1
+              </button>
+            </div>
 
-              <div className="p2-weight-presets" role="group" aria-label={t('createLot.weight.presets')}>
-                {[1, 2, 5, 10, 20, 50].map(w => (
-                  <button
-                    key={w}
-                    className={`p2-preset-btn ${Number(weight) === w ? 'p2-preset-btn--active' : ''}`}
-                    onClick={() => handleWeightChange(String(w))}
-                    aria-pressed={Number(weight) === w}
-                  >
-                    {w} kg
-                  </button>
-                ))}
-              </div>
+            <div className="p2-weight-chips" role="group" aria-label="Quick weight presets">
+              {[1, 5, 10, 25, 50].map(w => (
+                <button
+                  key={w}
+                  type="button"
+                  className={`p2-weight-chip ${Number(weight) === w ? 'p2-weight-chip--active' : ''}`}
+                  onClick={() => {
+                    setWeight(String(w));
+                    if (category) fetchValuation(w, category, location);
+                  }}
+                >
+                  {w} kg
+                </button>
+              ))}
             </div>
 
             <div className="form-group" style={{ marginTop: 'var(--space-5)' }}>
-              <label className="form-label" htmlFor="location-sel">{t('createLot.location.label')}</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                <label className="form-label" htmlFor="lot-location" style={{ margin: 0 }}>
+                  {t('createLot.location.label')}
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={handleDetectGps}
+                  disabled={detectingGps}
+                  style={{ fontSize: '0.8rem', padding: '2px 8px', height: 'auto' }}
+                >
+                  {detectingGps ? <><LoadingSpinner size="sm" /> Locating…</> : '📍 Detect GPS'}
+                </button>
+              </div>
               <select
-                id="location-sel"
+                id="lot-location"
                 className="form-input form-select"
-                value={location}
-                onChange={e => setLocation(e.target.value)}
+                value={LOCATIONS.includes(location) ? location : ''}
+                onChange={e => {
+                  setLocation(e.target.value);
+                  setGpsHint('');
+                }}
               >
-                {LOCATIONS.map(l => <option key={l} value={l}>{l}</option>)}
+                {!LOCATIONS.includes(location) && location && (
+                  <option value="">{location}</option>
+                )}
+                {LOCATIONS.map(loc => (
+                  <option key={loc} value={loc}>{loc}</option>
+                ))}
               </select>
-              <p className="form-hint">{t('createLot.location.hint')}</p>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="desc-input">
-                {t('createLot.notes.label')}{' '}
-                <span style={{ fontWeight: 'normal', color: 'var(--color-text-muted)' }}>
-                  {t('common.optional')}
-                </span>
-              </label>
-              <textarea
-                id="desc-input"
-                className="form-input"
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                placeholder={t('createLot.notes.placeholder')}
-                rows={2}
-              />
-            </div>
-
-            {/* Live Valuation Panel */}
-            <div className="p2-valuation-panel" aria-live="polite" aria-label={t('createLot.valuation.label')}>
-              {loadingVal ? (
-                <div className="p2-val-loading">
-                  <LoadingSpinner size="sm" />
-                  <span>{t('createLot.valuation.calculating')}</span>
-                </div>
-              ) : valError ? (
-                <div className="p2-val-error">
-                  
-                  <span>{valError}</span>
-                </div>
-              ) : valuation ? (
-                <div className="p2-val-result animate-scale-in">
-                  <div className="p2-val-header">
-                    <div className="p2-val-label">{t('createLot.valuation.instantEstimate')}</div>
-                    <div className="p2-val-amount">{fmtRupees(valuation.estimated_value)}</div>
-                    <div className="p2-val-breakdown">
-                      {t('createLot.valuation.breakdown', {
-                        unitPrice: fmtRupees(valuation.unit_price),
-                        weight: valuation.weight_kg,
-                        total: fmtRupees(valuation.estimated_value),
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="p2-range-section">
-                    <div className="p2-range-labels">
-                      <span>{t('createLot.valuation.low', { price: fmtRupees(valuation.market_range_low) })}</span>
-                      <span style={{ fontWeight: 'var(--weight-bold)', color: 'var(--color-primary)' }}>
-                        {t('createLot.valuation.yourPrice', { price: fmtRupees(valuation.unit_price) })}
-                      </span>
-                      <span>{t('createLot.valuation.high', { price: fmtRupees(valuation.market_range_high) })}</span>
-                    </div>
-                    <div
-                      className="p2-range-bar"
-                      role="img"
-                      aria-label={t('createLot.valuation.priceAt', { pct: rangePercent })}
-                    >
-                      <div className="p2-range-fill" style={{ width: `${Math.max(4, Math.min(rangePercent, 100))}%` }} />
-                      <div className="p2-range-marker" style={{ left: `${Math.max(4, Math.min(rangePercent, 96))}%` }} />
-                    </div>
-                    <p className="p2-range-note">
-                      {t('createLot.valuation.marketRange', { category: valuation.category, location: valuation.location })}
-                    </p>
-                  </div>
-
-                  <div className="p2-val-chips">
-                    <div className="p2-val-chip">
-                      <span className="p2-val-chip__label">{t('createLot.valuation.unitPrice')}</span>
-                      <span className="p2-val-chip__value">{fmtRupees(valuation.unit_price)}/kg</span>
-                    </div>
-                    <div className="p2-val-chip p2-val-chip--accent">
-                      <span className="p2-val-chip__label">{t('createLot.valuation.totalValue')}</span>
-                      <span className="p2-val-chip__value">{fmtRupees(valuation.estimated_value)}</span>
-                    </div>
-                    <div className="p2-val-chip">
-                      <span className="p2-val-chip__label">{t('createLot.valuation.weight')}</span>
-                      <span className="p2-val-chip__value">{valuation.weight_kg} kg</span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="p2-val-empty">
-                  
-                  <p>{t('createLot.valuation.empty')}</p>
-                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                    {t('createLot.valuation.emptyNote', { location })}
-                  </p>
-                </div>
+              {gpsHint && (
+                <p className="form-hint" style={{ color: collectionLat ? 'var(--color-success, #16a34a)' : 'var(--color-primary)', marginTop: 'var(--space-1)' }}>
+                  {gpsHint}
+                </p>
               )}
             </div>
           </section>
 
-          <div className="step-nav">
-            <button className="btn btn-outline" onClick={() => { setStep(0); setError(''); }}>
+          <section className="card p2-val-card" aria-labelledby="val-heading">
+            <div className="p2-val-card__head">
+              <div>
+                <span className="p2-val-card__kicker">
+                  {t('createLot.valuation.liveBenchmark')}
+                </span>
+                <h2 id="val-heading" className="p2-val-card__title">
+                  {catObj?.label || category} · {location}
+                </h2>
+              </div>
+              {loadingVal && <LoadingSpinner size="sm" />}
+            </div>
+
+            {valError ? (
+              <div className="p2-val-card__empty">{valError}</div>
+            ) : valuation ? (
+              <div className="animate-fade-in">
+                <div className="p2-val-hero">
+                  <div className="p2-val-hero__amount font-mono">
+                    {fmtRupees(valuation.estimated_value)}
+                  </div>
+                  <div className="p2-val-hero__rate">
+                    {fmtRupees(valuation.unit_price)} / kg
+                  </div>
+                </div>
+
+                <div className="p2-range">
+                  <div className="p2-range__labels">
+                    <span>{t('createLot.valuation.fairMin')} <strong>{fmtRupees(valuation.market_range_low)}</strong></span>
+                    <span>{t('createLot.valuation.fairMax')} <strong>{fmtRupees(valuation.market_range_high)}</strong></span>
+                  </div>
+                  <div className="p2-range__bar">
+                    <div className="p2-range__fill" style={{ width: `${Math.min(100, Math.max(0, rangePercent))}%` }} />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="p2-val-card__hint">
+                {t('createLot.valuation.hint')}
+              </p>
+            )}
+          </section>
+
+          <div className="form-actions">
+            <button className="btn btn-outline" onClick={() => setStep(0)}>
               {t('common.back')}
             </button>
             <button
@@ -753,154 +747,78 @@ export default function CreateLot() {
               onClick={goToStep3}
               disabled={!weight || Number(weight) <= 0}
             >
-              {t('createLot.buttons.reviewSubmit')}
+              {t('createLot.actions.reviewLot')}
             </button>
           </div>
         </div>
       )}
 
-      {/* STEP 2 — Review & Submit */}
       {step === 2 && (
-        <div className="step-panel animate-scale-in">
-          <section className="card" aria-labelledby="confirm-heading">
-            <h2 id="confirm-heading" className="p2-section-title" style={{ marginBottom: 'var(--space-6)' }}>
-              
+        <div className="step-panel animate-slide-up">
+          <section className="card p2-section" aria-labelledby="review-heading">
+            <h2 id="review-heading" className="p2-section-title">
               {t('createLot.review.heading')}
             </h2>
 
-            {photos.length > 0 && (
-              <div className="p2-confirm-photos">
-                {photos.map((p, i) => (
-                  <img key={i} src={p.preview} alt={`Photo ${i + 1}`} className="p2-confirm-thumb" />
-                ))}
-              </div>
-            )}
-
-            <div className="confirm-grid">
-              <div className="confirm-row">
-                <span className="confirm-row__label">{t('createLot.review.category')}</span>
-                <span className="confirm-row__value">
-                  {catObj?.icon} {catObj?.label}
-                  {subCategory && <em style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}> — {subCategory}</em>}
+            <div className="p2-review-grid">
+              <div className="p2-review-cell">
+                <span className="p2-review-cell__label">{t('createLot.review.material')}</span>
+                <span className="p2-review-cell__val">
+                  {catObj?.icon} {catObj?.label || category}
+                  {subCategory && <span className="p2-review-cell__sub"> ({subCategory})</span>}
                 </span>
               </div>
-              <div className="confirm-row">
-                <span className="confirm-row__label">{t('createLot.review.weight')}</span>
-                <span className="confirm-row__value">{weight} kg</span>
+
+              <div className="p2-review-cell">
+                <span className="p2-review-cell__label">{t('createLot.review.weight')}</span>
+                <span className="p2-review-cell__val font-mono">{weight} kg</span>
               </div>
-              <div className="confirm-row">
-                <span className="confirm-row__label">{t('createLot.review.location')}</span>
-                <span className="confirm-row__value">{location}</span>
+
+              <div className="p2-review-cell">
+                <span className="p2-review-cell__label">{t('createLot.review.location')}</span>
+                <span className="p2-review-cell__val">{location}</span>
               </div>
-              {description && (
-                <div className="confirm-row">
-                  <span className="confirm-row__label">{t('createLot.review.notes')}</span>
-                  <span className="confirm-row__value" style={{ fontSize: 'var(--text-sm)' }}>{description}</span>
-                </div>
-              )}
-              {valuation && (
-                <div className="confirm-row confirm-row--highlight">
-                  <span className="confirm-row__label">{t('createLot.review.estimatedValue')}</span>
-                  <span className="confirm-row__value confirm-row__value--big">
-                    {fmtRupees(valuation.estimated_value)}
-                  </span>
-                </div>
-              )}
+
+              <div className="p2-review-cell p2-review-cell--highlight">
+                <span className="p2-review-cell__label">{t('createLot.review.estValue')}</span>
+                <span className="p2-review-cell__val font-mono" style={{ color: 'var(--color-primary)' }}>
+                  {valuation ? fmtRupees(valuation.estimated_value) : '—'}
+                </span>
+              </div>
             </div>
 
-            {valuation && (
-              <div className="p2-confirm-val-detail">
-                <div className="p2-confirm-val-row">
-                  <span>{t('createLot.review.marketPrice', { location })}</span>
-                  <strong>{fmtRupees(valuation.unit_price)}/kg</strong>
-                </div>
-                <div className="p2-confirm-val-row">
-                  <span>{t('createLot.review.marketRange')}</span>
-                  <strong>{fmtRupees(valuation.market_range_low)} – {fmtRupees(valuation.market_range_high)}/kg</strong>
-                </div>
-                <div className="p2-confirm-val-row">
-                  <span>{t('createLot.review.photosAttached')}</span>
-                  <strong>
-                    {photos.length} {photos.length !== 1 ? t('common.photos') : t('common.photo')}
-                  </strong>
-                </div>
-              </div>
-            )}
-
-            {/* AI Explainability card — shows what data drove the estimate */}
-            {(classify || valuation) && (
-              <div className="p2-ai-explain" role="region" aria-label="AI analysis summary">
-                <div className="p2-ai-explain__header">
-                  <span className="p2-ai-explain__icon" aria-hidden="true">🤖</span>
-                  <span className="p2-ai-explain__title">AI Analysis Summary</span>
-                </div>
-                <ul className="p2-ai-explain__list">
-                  {classify && (
-                    <li>
-                      <span className="p2-ai-explain__check">✓</span>
-                      <span>
-                        Material detected: <strong>{catObj?.label ?? classify.category}</strong>
-                        {' '}({Math.round(classify.confidence * 100)}% confidence
-                        {' — '}
-                        {classify.verdict === 'high' && 'high'}
-                        {classify.verdict === 'medium' && 'medium'}
-                        {classify.verdict === 'low' && 'low — please verify'})
-                      </span>
-                    </li>
-                  )}
-                  {valuation && (
-                    <>
-                      <li>
-                        <span className="p2-ai-explain__check">✓</span>
-                        <span>Weight: <strong>{weight} kg</strong></span>
-                      </li>
-                      <li>
-                        <span className="p2-ai-explain__check">✓</span>
-                        <span>
-                          Market data: <strong>{valuation.price_samples ?? 1} price record{valuation.price_samples !== 1 ? 's' : ''}</strong>
-                          {' '}in {valuation.location}
-                        </span>
-                      </li>
-                      <li>
-                        <span className="p2-ai-explain__check">✓</span>
-                        <span>
-                          Weighted avg price: <strong>{fmtRupees(valuation.unit_price)}/kg</strong>
-                          {' '}(range {fmtRupees(valuation.market_range_low)}–{fmtRupees(valuation.market_range_high)})
-                        </span>
-                      </li>
-                    </>
-                  )}
-                  <li>
-                    <span className="p2-ai-explain__note" aria-hidden="true">ℹ️</span>
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
-                      This is an estimate. The recycler’s quote determines the final price.
-                    </span>
-                  </li>
-                </ul>
-              </div>
-            )}
+            <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
+              <label className="form-label" htmlFor="lot-desc">
+                {t('createLot.review.notesLabel')}
+                <span className="p2-optional">{t('createLot.photo.optional')}</span>
+              </label>
+              <textarea
+                id="lot-desc"
+                className="form-input"
+                rows={2}
+                placeholder={t('createLot.review.notesPlaceholder')}
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+              />
+            </div>
           </section>
 
-          <div className="step-nav">
-            <button className="btn btn-outline" onClick={() => { setStep(1); setError(''); }}>
+          <div className="form-actions">
+            <button className="btn btn-outline" onClick={() => setStep(1)} disabled={creating}>
               {t('common.back')}
             </button>
             <button
-              className="btn btn-accent btn-lg"
+              className="btn btn-primary btn-lg"
               onClick={handleSubmit}
               disabled={creating}
               aria-busy={creating}
             >
-              {creating
-                ? <><LoadingSpinner size="sm" /> {t('createLot.buttons.submitting')}</>
-                : <> {t('createLot.buttons.submitLot')}</>
-              }
+              {creating ? <><LoadingSpinner size="sm" /> {t('createLot.actions.creating')}</> : t('createLot.actions.submitFindRecyclers')}
             </button>
           </div>
         </div>
       )}
-      </>
-      )}
+      </>)}
     </div>
   );
 }

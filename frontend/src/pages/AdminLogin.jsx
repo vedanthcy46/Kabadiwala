@@ -52,6 +52,9 @@ export default function AdminLogin() {
   return (
     <div className="container login-page">
       <div className="login-card card animate-scale-in">
+        <Link to="/" className="back-link" style={{ alignSelf: 'flex-start', marginBottom: 'var(--space-2)' }}>
+          {t('common.back')}
+        </Link>
         <div className="login-card__head login-card__head--admin">
           <div className="login-card__logo login-card__logo--admin" aria-hidden="true">⚙️</div>
           <h1 className="section-title">{t('adminLogin.title')}</h1>

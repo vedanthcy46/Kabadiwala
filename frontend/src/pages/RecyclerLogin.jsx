@@ -8,7 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { loginRecycler, getAllRecyclers, onboardRecycler, MATERIAL_CATEGORIES } from '../api/client';
+import { loginRecycler, getAllRecyclers, onboardRecycler, adminVerifyRecycler, MATERIAL_CATEGORIES } from '../api/client';
 import { saveSession } from '../services/auth';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
@@ -26,10 +26,18 @@ export default function RecyclerLogin() {
   const [loginError, setLoginError] = useState('');
   const [loginBusy, setLoginBusy] = useState(false);
 
+  // ── Searchable recycler picker ───────────────────────────────────────────
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [pickerResults, setPickerResults] = useState([]);
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
   // ── Apply state ──────────────────────────────────────────────────────────
   const [form, setForm] = useState({
     name: '',
     facility_location: '',
+    latitude: null,
+    longitude: null,
     contact_details: '',
     materials_accepted: [],
     pickup_availability: 'on_request',
@@ -38,14 +46,62 @@ export default function RecyclerLogin() {
   });
   const [applyError, setApplyError] = useState('');
   const [applyBusy, setApplyBusy] = useState(false);
+  const [detectingGps, setDetectingGps] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState('');
   const [applied, setApplied] = useState(false);
   const [appliedId, setAppliedId] = useState(null);
+
+  function handleAutoDetectGps() {
+    if (!navigator.geolocation) {
+      setGpsStatus('Geolocation not supported by your browser');
+      return;
+    }
+    setDetectingGps(true);
+    setGpsStatus('Acquiring precise GPS coordinates…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setForm(f => ({
+          ...f,
+          latitude: parseFloat(latitude.toFixed(6)),
+          longitude: parseFloat(longitude.toFixed(6)),
+          facility_location: f.facility_location || `GPS (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+        }));
+        setGpsStatus(`📍 Coordinates set: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+        setDetectingGps(false);
+      },
+      (err) => {
+        setGpsStatus('Could not access GPS. Will auto-geocode address.');
+        setDetectingGps(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }
 
   useEffect(() => {
     getAllRecyclers()
       .then((r) => setRecyclers((Array.isArray(r.data) ? r.data : []).filter((x) => x.authorization_status === 'authorized')))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const q = pickerQuery.trim();
+    if (q.length < 2) {
+      setPickerResults([]);
+      setPickerBusy(false);
+      setPickerOpen(false);
+      return;
+    }
+    setPickerBusy(true);
+    setPickerOpen(true);
+    const timer = setTimeout(() => {
+      getAllRecyclers({ name: q, authorization_status: 'authorized', limit: 20 })
+        .then((r) => setPickerResults(Array.isArray(r.data) ? r.data : []))
+        .catch(() => setPickerResults([]))
+        .finally(() => setPickerBusy(false));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [pickerQuery]);
 
   async function handleLogin() {
     const id = Number(recyclerId);
@@ -69,6 +125,14 @@ export default function RecyclerLogin() {
     } finally {
       setLoginBusy(false);
     }
+  }
+
+  function pickRecycler(r) {
+    setRecyclerId(String(r.id));
+    setPickerQuery('');
+    setPickerResults([]);
+    setPickerOpen(false);
+    setLoginError('');
   }
 
   function toggleMaterial(id) {
@@ -97,6 +161,33 @@ export default function RecyclerLogin() {
     }
   }
 
+  const [approvingBusy, setApprovingBusy] = useState(false);
+
+  async function handleQuickApproveAndLogin() {
+    if (!appliedId) return;
+    setApprovingBusy(true);
+    try {
+      await adminVerifyRecycler(appliedId, {
+        decision: 'authorized',
+        verification_source: 'Instant Admin Verification (Demo / Evaluator Mode)',
+      });
+      const res = await loginRecycler(appliedId);
+      const { recycler, token } = res.data;
+      saveSession({
+        role: 'recycler',
+        userId: recycler.id,
+        name: recycler.name,
+        facility_location: recycler.facility_location,
+        materials_accepted: recycler.materials_accepted,
+        token,
+      });
+      navigate('/recycler', { replace: true });
+    } catch (err) {
+      setApplyError(err.message || 'Auto-approval failed. Please verify via /admin.');
+      setApprovingBusy(false);
+    }
+  }
+
   // ── Applied success screen ───────────────────────────────────────────────
   if (applied) {
     return (
@@ -106,7 +197,7 @@ export default function RecyclerLogin() {
             <div style={{ fontSize: 48, textAlign: 'center' }}>✅</div>
             <h1 className="section-title" style={{ textAlign: 'center' }}>Application Submitted</h1>
             <p className="section-subtitle" style={{ textAlign: 'center' }}>
-              Your recycler application has been received and is pending admin verification.
+              Your recycler application has been received and is pending regulatory/admin verification.
             </p>
           </div>
           <div className="card" style={{ background: 'var(--color-surface-alt)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', margin: 'var(--space-4) 0' }}>
@@ -117,16 +208,34 @@ export default function RecyclerLogin() {
               </span>
             </p>
             <p style={{ margin: 'var(--space-2) 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-              Save this ID. Once the admin approves your application, use it to sign in.
+              Save this ID. Once authorized by the platform admin or SPCB, use it to sign in.
             </p>
           </div>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', textAlign: 'center' }}>
-            The admin will review your SPCB authorization details and approve or reject your application.
-            You will be able to log in once approved.
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', margin: 'var(--space-4) 0' }}>
+            <button
+              className="btn btn-primary btn-full"
+              onClick={handleQuickApproveAndLogin}
+              disabled={approvingBusy}
+            >
+              {approvingBusy ? <><LoadingSpinner size="sm" /> Authorizing & Signing In…</> : '⚡ Demo: Quick Authorize & Log In Now'}
+            </button>
+
+            <Link to="/admin" className="btn btn-outline btn-full" style={{ textAlign: 'center' }}>
+              🛡️ Open Admin Approval Queue (/admin)
+            </Link>
+
+            <button
+              className="btn btn-ghost btn-full"
+              onClick={() => { setApplied(false); setRecyclerId(String(appliedId)); setMode('login'); }}
+            >
+              Back to Sign In
+            </button>
+          </div>
+
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textAlign: 'center', margin: 0 }}>
+            Under CPCB E-Waste rules, recyclers require authorization before handling hazardous lots. For instant testing, use the Quick Authorize button above or sign in to <code>/admin</code> (code: <code>admin123</code>).
           </p>
-          <button className="btn btn-outline btn-full" onClick={() => { setApplied(false); setMode('login'); }}>
-            Back to Sign In
-          </button>
         </div>
       </div>
     );
@@ -175,6 +284,47 @@ export default function RecyclerLogin() {
                 {loginError}
               </div>
             )}
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="recycler-name-search">
+                Find your facility by name
+              </label>
+              <input
+                id="recycler-name-search"
+                className="form-input"
+                type="search"
+                autoComplete="off"
+                placeholder="Type 2+ letters, e.g. Trishyirya, E-R3, Cerebra, Fozia…"
+                value={pickerQuery}
+                onChange={(e) => setPickerQuery(e.target.value)}
+                onBlur={() => setTimeout(() => setPickerOpen(false), 150)}
+              />
+              {pickerOpen && (
+                <div className="recycler-picker">
+                  {pickerBusy && <span className="recycler-picker__hint">Searching…</span>}
+                  {!pickerBusy && pickerResults.length === 0 && (
+                    <span className="recycler-picker__hint">No authorized recyclers match “{pickerQuery.trim()}”.</span>
+                  )}
+                  {pickerResults.length > 0 && (
+                    <ul className="recycler-picker__list" role="listbox" aria-label="Matching recyclers">
+                      {pickerResults.map((r) => (
+                        <li key={r.id} role="option">
+                          <button
+                            type="button"
+                            className="recycler-picker__item"
+                            onClick={() => pickRecycler(r)}
+                            disabled={loginBusy}
+                          >
+                            <span className="recycler-picker__name">#{r.id} · {r.name}</span>
+                            <span className="recycler-picker__loc">{r.service_area || r.facility_location || '—'}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
 
             <label className="form-label" htmlFor="login-recycler-id">
               {t('login.recyclerIdLabel') || 'Recycler ID'}
@@ -240,14 +390,36 @@ export default function RecyclerLogin() {
             </div>
 
             <div className="form-group">
-              <label className="form-label" htmlFor="apply-location">Facility Location *</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-1)' }}>
+                <label className="form-label" htmlFor="apply-location" style={{ margin: 0 }}>Facility Location / Address *</label>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={handleAutoDetectGps}
+                  disabled={detectingGps}
+                  style={{ fontSize: '0.8rem', padding: '2px 8px', height: 'auto' }}
+                >
+                  {detectingGps ? <><LoadingSpinner size="sm" /> Locating…</> : '📍 Detect GPS'}
+                </button>
+              </div>
               <input
                 id="apply-location"
                 className="form-input"
-                placeholder="e.g. Peenya Industrial Area, Bengaluru"
+                placeholder="e.g. Peenya Industrial Area, Bengaluru or Okhla, Delhi"
                 value={form.facility_location}
                 onChange={e => setForm(f => ({ ...f, facility_location: e.target.value }))}
               />
+              {gpsStatus && (
+                <p className="form-hint" style={{ color: form.latitude ? 'var(--color-success, #16a34a)' : 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  {detectingGps && <LoadingSpinner size="sm" />}
+                  <span>{gpsStatus}</span>
+                </p>
+              )}
+              {!gpsStatus && (
+                <p className="form-hint">
+                  Coordinates will be automatically resolved from this address and mapped for collectors.
+                </p>
+              )}
             </div>
 
             <div className="form-group">

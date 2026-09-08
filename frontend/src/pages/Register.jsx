@@ -22,13 +22,44 @@ export default function Register() {
     name: '',
     phone: '',
     operating_location: '',
+    latitude: null,
+    longitude: null,
     preferred_language: getSession()?.preferred_language || 'hi',
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [detectingGps, setDetectingGps] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState('');
 
   function setField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  function handleDetectGps() {
+    if (!navigator.geolocation) {
+      setGpsStatus('Geolocation is not supported by your browser');
+      return;
+    }
+    setDetectingGps(true);
+    setGpsStatus('Acquiring precise GPS coordinates…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setForm((f) => ({
+          ...f,
+          latitude: parseFloat(latitude.toFixed(6)),
+          longitude: parseFloat(longitude.toFixed(6)),
+          operating_location: f.operating_location || `GPS Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+        }));
+        setGpsStatus(`📍 Coordinates detected: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+        setDetectingGps(false);
+      },
+      (err) => {
+        setGpsStatus('Could not access GPS. Will auto-resolve address location.');
+        setDetectingGps(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
   }
 
   async function handleSubmit() {
@@ -44,6 +75,8 @@ export default function Register() {
         name,
         phone,
         operating_location: form.operating_location.trim() || undefined,
+        latitude: form.latitude ?? undefined,
+        longitude: form.longitude ?? undefined,
         preferred_language: form.preferred_language,
       });
       const { collector, token } = res.data;
@@ -54,6 +87,8 @@ export default function Register() {
         phone: collector.phone,
         preferred_language: collector.preferred_language,
         operating_location: collector.operating_location,
+        latitude: collector.latitude,
+        longitude: collector.longitude,
         token,
       });
       setLang(collector.preferred_language);
@@ -109,7 +144,18 @@ export default function Register() {
             onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
           />
 
-          <label className="form-label" htmlFor="reg-loc">{t('register.location')}</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-2)' }}>
+            <label className="form-label" htmlFor="reg-loc" style={{ margin: 0 }}>{t('register.location')}</label>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={handleDetectGps}
+              disabled={detectingGps}
+              style={{ fontSize: '0.8rem', padding: '2px 8px', height: 'auto' }}
+            >
+              {detectingGps ? <><LoadingSpinner size="sm" /> Locating…</> : '📍 Detect GPS'}
+            </button>
+          </div>
           <input
             id="reg-loc"
             className="form-input"
@@ -118,6 +164,12 @@ export default function Register() {
             value={form.operating_location}
             onChange={(e) => setField('operating_location', e.target.value)}
           />
+          {gpsStatus && (
+            <p className="form-hint" style={{ color: form.latitude ? 'var(--color-success, #16a34a)' : 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              {detectingGps && <LoadingSpinner size="sm" />}
+              <span>{gpsStatus}</span>
+            </p>
+          )}
 
           <fieldset className="pay-methods" aria-label={t('register.language')}>
             <legend className="form-label">{t('register.language')}</legend>

@@ -97,3 +97,17 @@ export const getLotImages = async (req, res) => {
     data: result,
   });
 };
+
+export const cancelOrDeleteLot = async (req, res) => {
+  const { lotId } = req.params;
+  const collectorId = req.body?.collector_id || req.query?.collector_id || null;
+  const reason = req.body?.reason;
+
+  const result = await handoverService.cancelOrDeleteLot(lotId, collectorId, { reason });
+
+  res.status(200).json({
+    success: true,
+    data: result,
+  });
+};
+

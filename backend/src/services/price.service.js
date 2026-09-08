@@ -9,7 +9,7 @@ import { query } from '../db.js';
  */
 export const getPriceTrends = async (category, location, days = 30) => {
   const trendQuery = `
-    SELECT 
+    SELECT DISTINCT ON (price_date)
       price_date,
       buying_price,
       market_range_low,
@@ -18,8 +18,9 @@ export const getPriceTrends = async (category, location, days = 30) => {
     FROM prices
     WHERE material_category = $1 
       AND location = $2
+      AND recycler_id IS NULL
       AND price_date >= CURRENT_DATE - ($3 || ' days')::INTERVAL
-    ORDER BY price_date ASC
+    ORDER BY price_date ASC, id DESC
   `;
 
   const result = await query(trendQuery, [category, location, days]);

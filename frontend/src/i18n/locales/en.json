@@ -71,6 +71,7 @@
     "edit": "Edit",
     "view": "View →",
     "close": "Close",
+    "clear": "Clear",
     "optional": "(optional)",
     "allTime": "All time",
     "completed": "Completed",
@@ -100,7 +101,8 @@
     "offered": "Offered",
     "accepted": "Accepted",
     "rejected": "Rejected",
-    "expired": "Expired"
+    "expired": "Expired",
+    "cancelled": "Cancelled"
   },
   "offline": {
     "offline": "Offline",
@@ -178,6 +180,18 @@
       "weightValue": "Weight & Value",
       "reviewSubmit": "Review & Submit"
     },
+    "photo": {
+      "heading": "Add Photos",
+      "optional": "(optional)",
+      "subtitle": "Attach clear photos for faster recycler verification",
+      "tapCamera": "Take a photo or upload from gallery",
+      "formats": "JPG, PNG up to 10MB each (max 3 photos)",
+      "btnCamera": "Camera",
+      "btnUpload": "Upload",
+      "badgeCover": "Cover",
+      "removePhoto": "Remove photo {{index}}",
+      "addMore": "+{{count}} more"
+    },
     "photos": {
       "heading": "Add Photos",
       "count": "{{current}}/{{max}} photos",
@@ -193,13 +207,17 @@
       "removePhoto": "Remove photo {{n}}"
     },
     "classification": {
+      "scanning": "Analyzing photo with AI…",
       "analyzing": "Looking at your photo to suggest a type…",
       "suggested": "Suggested type",
       "autoSuggest": "We suggest selecting the type below. You can change it anytime.",
       "confidenceHigh": "High confidence",
       "confidenceMedium": "Medium confidence",
       "confidenceLow": "Low confidence — please check",
+      "match": "match",
       "use": "Use suggestion",
+      "useCategory": "Use {{name}}",
+      "chooseOther": "Choose different category",
       "dismiss": "Dismiss",
       "alternatives": "Other possibilities",
       "noSuggestion": "Couldn't suggest a type from this photo. Please select manually.",
@@ -214,13 +232,22 @@
     },
     "category": {
       "heading": "Select Material Type",
+      "subtitle": "Choose the primary category of your e-waste",
+      "subType": "Sub-category",
       "label": "Material categories",
       "subCategory": "Sub-category",
       "subCategoryLabel": "Sub-categories",
       "selected": "Selected"
     },
+    "actions": {
+      "continueWeight": "Continue to Weight & Value →",
+      "reviewLot": "Review Scrap Lot →",
+      "creating": "Creating Lot…",
+      "submitFindRecyclers": "Create Lot & Find Recyclers"
+    },
     "weight": {
       "heading": "Weight & Location",
+      "subtitle": "Enter the approximate weight in kilograms",
       "label": "Approximate Weight (kg)",
       "hint": "Enter the approximate weight. Use + / − buttons for easy adjustment.",
       "decrease": "Decrease weight by 1 kg",
@@ -238,6 +265,10 @@
     },
     "valuation": {
       "label": "Instant Valuation Estimate",
+      "liveBenchmark": "Live Market Valuation Benchmark",
+      "fairMin": "Market Min:",
+      "fairMax": "Market Max:",
+      "hint": "Enter weight above to see your live market value estimate",
       "calculating": "Calculating real-time value from market prices…",
       "instantEstimate": "Instant Estimate",
       "breakdown": "{{unitPrice}}/kg × {{weight}} kg = {{total}}",
@@ -255,9 +286,13 @@
     },
     "review": {
       "heading": "Review & Submit",
-      "category": "Category",
+      "material": "Material Category",
       "weight": "Weight",
       "location": "Location",
+      "estValue": "Estimated Value",
+      "notesLabel": "Notes",
+      "notesPlaceholder": "Condition, mix type, any special details…",
+      "category": "Category",
       "notes": "Notes",
       "estimatedValue": "Estimated Value",
       "marketPrice": "Market price ({{location}})",
@@ -348,6 +383,8 @@
     "subtitle": "Authorized recyclers matched to your lot",
     "noMatch": "No recyclers matched",
     "noMatchDesc": "Try a different category or location.",
+    "searchPlaceholder": "Search recyclers by name or address...",
+    "noSearchMatch": "No recyclers match your search query.",
     "rank": "Rank",
     "name": "Name",
     "distance": "Distance",
@@ -357,6 +394,12 @@
     "pickupNo": "No",
     "authorized": "Authorized",
     "matchScore": "Match Score",
+    "suitability": "Suitability Score",
+    "scoreBreakdown": "Score breakdown",
+    "scorePrice": "Price",
+    "scoreDistance": "Distance",
+    "scorePickup": "Pickup",
+    "scoreReliability": "Reliability",
     "handingOver": "Initiating…",
     "selectRecycler": "Select this Recycler",
     "initiateHandover": "Initiate Handover",
@@ -422,7 +465,22 @@
       "high": "High concern",
       "medium": "Review"
     },
-    "payMarketRange": "Market range: {{low}} – {{high}}/kg"
+    "payMarketRange": "Market range: {{low}} – {{high}}/kg",
+    "deleteLot": "Delete Lot",
+    "cancelLot": "Cancel Lot",
+    "deleteConfirmTitle": "Delete this draft lot?",
+    "deleteConfirmDesc": "This lot will be permanently removed as no quotes or transactions have taken place.",
+    "cancelConfirmTitle": "Cancel this lot?",
+    "cancelConfirmDesc": "Cancelling this lot will close all open offers and mark it as cancelled. The photo records and audit log will be permanently retained.",
+    "cancelReasonLabel": "Reason for cancellation",
+    "cancelReasonPlaceholder": "E.g., Accepted alternate rate, material damaged, entered in error...",
+    "cancelReasonRequired": "Please enter a brief reason for cancellation.",
+    "cancelling": "Cancelling…",
+    "deleting": "Deleting…",
+    "cancelledBanner": "This lot was cancelled on {{date}}. Reason: {{reason}}",
+    "lotLocked": "Handover or payment in progress — lot cannot be cancelled.",
+    "lotDeletedSuccess": "Draft lot was deleted successfully.",
+    "lotCancelledSuccess": "Lot cancelled successfully."
   },
   "traceability": {
     "title": "Traceability",
@@ -580,7 +638,26 @@
     "tab": {
       "overview": "Overview",
       "recyclers": "Recycler Verification",
-      "prices": "Price Sources"
+      "prices": "Price Sources",
+      "dataset": "AI Dataset"
+    },
+    "dataset": {
+      "desc": "How the AI training dataset is generated: every classifier prediction plus the collector's human decision is stored in ai_feedback and validated here.",
+      "samples": "Labelled Samples",
+      "validated": "Validated",
+      "pendingReview": "Pending Review",
+      "accuracy": "Accuracy",
+      "category": "Category",
+      "accepted": "Accepted",
+      "corrected": "Corrected",
+      "dismissed": "Dismissed",
+      "pending": "Pending",
+      "when": "When",
+      "lot": "Lot",
+      "aiPredicted": "AI Predicted",
+      "humanLabel": "Human Label",
+      "outcome": "Outcome",
+      "exportCsv": "Export validated samples (CSV)"
     },
     "stat": {
       "collectors": "Collectors",
@@ -710,6 +787,11 @@
           "If eyes are exposed: flush gently with clean water for 15 minutes, seek medical help.",
           "Emergency number (India): 112",
           "Poison Control Helpline (India): 1800-11-6117"
+        ],
+        "doNot": [
+          "Do NOT delay seeking professional medical attention during severe emergencies.",
+          "Do NOT move an injured person unless there is immediate danger of fire or collapse.",
+          "Do NOT induce vomiting if hazardous chemicals have been ingested without poison control guidance."
         ]
       }
     }

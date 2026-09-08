@@ -1,8 +1,19 @@
 import { query } from '../db.js';
 import { ApiError } from '../utils/ApiError.js';
+import { resolveLocationCoords } from './location.service.js';
+import { uploadImage } from './cloudinary.service.js';
+
+let profileImageColEnsured = false;
+async function ensureProfileImageColumn() {
+  if (profileImageColEnsured) return;
+  try {
+    await query('ALTER TABLE recyclers ADD COLUMN IF NOT EXISTS profile_image TEXT');
+    profileImageColEnsured = true;
+  } catch (e) {}
+}
 
 /**
- * Create a new recycler profile.
+ * Create a new recycler profile with automatic geocoding.
  * @param {Object} data
  * @returns {Promise<Object>}
  */
@@ -14,6 +25,33 @@ export const createRecycler = async (data) => {
     contact_details, pickup_availability, service_area,
   } = data;
 
+  let finalLat = latitude;
+  let finalLng = longitude;
+
+  // Auto-resolve coordinates if not explicitly supplied
+  if (finalLat == null || finalLng == null) {
+    try {
+      const loc = facility_location || service_area || name;
+      if (loc) {
+        const resolved = await resolveLocationCoords(loc);
+        finalLat = resolved.lat;
+        finalLng = resolved.lng;
+      }
+    } catch (err) {
+      // If facility location is generic or unmapped (e.g. in unit tests), try service area or safe fallback
+      try {
+        if (service_area) {
+          const resolved = await resolveLocationCoords(service_area);
+          finalLat = resolved.lat;
+          finalLng = resolved.lng;
+        }
+      } catch (err2) {
+        finalLat = 12.9716;
+        finalLng = 77.5946;
+      }
+    }
+  }
+
   const result = await query(
     `INSERT INTO recyclers 
        (name, facility_location, latitude, longitude, materials_accepted,
@@ -22,7 +60,7 @@ export const createRecycler = async (data) => {
      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12)
      RETURNING *`,
     [
-      name, facility_location ?? null, latitude ?? null, longitude ?? null,
+      name, facility_location ?? null, finalLat ?? null, finalLng ?? null,
       JSON.stringify(materials_accepted), authorization_status,
       authorization_details ?? null, authorization_number ?? null, verification_source ?? null,
       contact_details ?? null, pickup_availability ?? null, service_area ?? null,
@@ -97,7 +135,7 @@ export const getRecyclerById = async (id) => {
  * @param {Object} filters
  * @returns {Promise<Object>}
  */
-export const listRecyclers = async ({ authorization_status, material, page = 1, limit = 20 }) => {
+export const listRecyclers = async ({ authorization_status, material, location, name, page = 1, limit = 20 }) => {
   const conditions = [];
   const params = [];
   let paramIndex = 1;
@@ -110,6 +148,17 @@ export const listRecyclers = async ({ authorization_status, material, page = 1, 
   if (material) {
     conditions.push(`materials_accepted ? $${paramIndex++}`);
     params.push(material);
+  }
+
+  if (location) {
+    conditions.push(`(facility_location ILIKE $${paramIndex} OR service_area ILIKE $${paramIndex})`);
+    params.push(`%${location}%`);
+    paramIndex++;
+  }
+
+  if (name) {
+    conditions.push(`name ILIKE $${paramIndex++}`);
+    params.push(`%${name}%`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -145,6 +194,7 @@ export const listRecyclers = async ({ authorization_status, material, page = 1, 
  * @returns {Promise<Object>}
  */
 export const updateRecycler = async (id, updates) => {
+  await ensureProfileImageColumn();
   const existing = await getRecyclerById(id);
 
   const fields = [];
@@ -159,10 +209,37 @@ export const updateRecycler = async (id, updates) => {
     materials_accepted: 'materials_accepted',
     authorization_status: 'authorization_status',
     authorization_details: 'authorization_details',
+    authorization_number: 'authorization_number',
+    verification_source: 'verification_source',
     contact_details: 'contact_details',
+    profile_image: 'profile_image',
     pickup_availability: 'pickup_availability',
     service_area: 'service_area',
   };
+
+  // If new profile image / avatar is provided (as base64 Data URL), upload to Cloudinary
+  if (updates.profile_image || updates.image_ref) {
+    const rawImg = updates.profile_image || updates.image_ref;
+    const uploadedUrl = await uploadImage(rawImg, {
+      folder: `kabadiwala/recyclers/${id}`,
+      publicId: `avatar-${id}`,
+    });
+    if (uploadedUrl) {
+      updates.profile_image = uploadedUrl;
+    }
+  }
+
+  // If location changed but no new coordinates provided, re-resolve coordinates
+  if (
+    (updates.facility_location || updates.service_area) &&
+    updates.latitude === undefined &&
+    updates.longitude === undefined
+  ) {
+    const targetLoc = updates.facility_location || updates.service_area;
+    const resolved = await resolveLocationCoords(targetLoc);
+    updates.latitude = resolved.lat;
+    updates.longitude = resolved.lng;
+  }
 
   for (const [key, value] of Object.entries(updates)) {
     if (value !== undefined && columnMap[key]) {

@@ -11,6 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { pool } from './db.js';
+import { seedNationalRecyclers } from './seedNationalRecyclers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sqlDir = path.join(__dirname, '..', 'sql');
@@ -20,7 +21,9 @@ const MIGRATIONS = [
   { file: '01_schema.sql',                   label: 'Core schema (all base tables)' },
   { file: '06_lot_system.sql',               label: 'Lot system (display IDs, events, images, AI feedback)' },
   { file: '06_ai_feedback.sql',              label: 'AI feedback table' },
+  { file: '08_ai_governance.sql',            label: 'AI dataset governance views' },
   { file: '05_national_recyclers_schema.sql',label: 'National recyclers reference table' },
+  { file: '09_lot_cancellation.sql',         label: 'Lot cancellation & audit fields' },
 ];
 
 // ── Seed files — run in dependency order ─────────────────────────────────────
@@ -28,12 +31,13 @@ const SEEDS = [
   { file: '02_seed_recyclers_prices.sql',  label: 'Recyclers, prices, price sources' },
   { file: '03_seed_transactions.sql',      label: 'Collectors, lots, transactions, traceability' },
   { file: '05_seed_recycler_rates.sql',    label: 'Recycler-specific offered rates' },
+  { file: '06_seed_city_prices.sql',       label: 'Per-city price references (6 metros)' },
 ];
 
 // ── Expected row counts after seeding ────────────────────────────────────────
 const EXPECTED = {
-  recyclers:    10,
-  prices:       71,
+  recyclers:    579,  // 10 demo + 569 imported national entries
+  prices:       426,
   collectors:    2,
   materials:     6,
   transactions:  6,
@@ -137,6 +141,10 @@ async function main() {
       for (const { file, label } of SEEDS) {
         await runFile(file, label);
       }
+
+      process.stdout.write('  ▶  National recycler dataset (XLSX → recyclers with coordinates) ... ');
+      await seedNationalRecyclers({ verbose: false });
+      console.log('✅');
 
       if (!skipVerify) {
         const ok = await verifyCounts();

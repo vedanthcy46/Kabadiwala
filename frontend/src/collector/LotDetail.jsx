@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   getLotsByCollector,
   getHandoversByLot,
@@ -8,6 +8,8 @@ import {
   getLotImages,
   acceptOffer,
   rejectOffer,
+  cancelLot,
+  deleteLot,
   DEMO_COLLECTOR_ID,
 } from '../api/client';
 import { currentCollectorId } from '../services/auth';
@@ -34,6 +36,7 @@ function fmt(n) {
 
 export default function CollectorLotDetail() {
   const { lotId } = useParams();
+  const navigate = useNavigate();
   const { t } = useTranslation();
 
   // Lot metadata comes from the collector lots endpoint
@@ -47,6 +50,13 @@ export default function CollectorLotDetail() {
   const [quoteToast, setQuoteToast] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Cancel / Delete modal state
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -167,6 +177,42 @@ export default function CollectorLotDetail() {
     }
   }
 
+  async function handleDeleteLot() {
+    setActionBusy(true);
+    setActionError('');
+    try {
+      const collectorId = currentCollectorId() ?? DEMO_COLLECTOR_ID;
+      await deleteLot(lotId, { collector_id: collectorId });
+      setShowDeleteModal(false);
+      navigate('/collector', { state: { toast: t('lotDetail.lotDeletedSuccess') } });
+    } catch (err) {
+      setActionError(err.message || 'Failed to delete lot');
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleCancelLot() {
+    if (!cancelReason.trim()) {
+      setActionError(t('lotDetail.cancelReasonRequired'));
+      return;
+    }
+    setActionBusy(true);
+    setActionError('');
+    try {
+      const collectorId = currentCollectorId() ?? DEMO_COLLECTOR_ID;
+      await cancelLot(lotId, { collector_id: collectorId, reason: cancelReason.trim() });
+      setShowCancelModal(false);
+      setQuoteToast(t('lotDetail.lotCancelledSuccess'));
+      load();
+    } catch (err) {
+      setActionError(err.message || 'Failed to cancel lot');
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+
   function getCurrentStep() {
     if (latestHandover?.status === 'confirmed') return 4;
     if (latestHandover?.handover_reference_number) return 3;
@@ -221,11 +267,56 @@ export default function CollectorLotDetail() {
             <h1 className="section-title">{t('lotDetail.title')}</h1>
             <p className="section-subtitle font-mono">{lotId}</p>
           </div>
-          {lot?.transaction_status && (
-            <StatusBadge status={lot.transaction_status} size="md" />
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+            {lot?.transaction_status && (
+              <StatusBadge status={lot.transaction_status} size="md" />
+            )}
+
+            {/* Lifecycle action button depending on lot state */}
+            {lot && !lot.is_cancelled && lot.transaction_status !== 'cancelled' && (
+              <>
+                {/* 1. If handover or payment has taken place: Immutable */}
+                {handovers.length > 0 || ['handed_over', 'confirmed'].includes(lot.transaction_status) || lot.payment_status === 'paid' ? (
+                  <span className="badge badge--muted" title={t('lotDetail.lotLocked')} style={{ fontSize: 'var(--text-xs)', padding: '4px 8px' }}>
+                    🔒 {t('lotDetail.lotLocked')}
+                  </span>
+                ) : offers.length > 0 || ['matched', 'accepted'].includes(lot.transaction_status) ? (
+                  /* 2. If matched / quotes exist: Cancel Lot with reason */
+                  <button
+                    className="btn btn-outline btn-sm"
+                    style={{ borderColor: 'var(--color-destructive)', color: 'var(--color-destructive)' }}
+                    onClick={() => { setActionError(''); setShowCancelModal(true); }}
+                  >
+                    ⚠️ {t('lotDetail.cancelLot')}
+                  </button>
+                ) : (
+                  /* 3. Freshly created draft: Delete Lot */
+                  <button
+                    className="btn btn-outline btn-sm"
+                    style={{ borderColor: 'var(--color-destructive)', color: 'var(--color-destructive)' }}
+                    onClick={() => { setActionError(''); setShowDeleteModal(true); }}
+                  >
+                    🗑️ {t('lotDetail.deleteLot')}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Cancelled Lot Banner */}
+      {(lot?.is_cancelled || lot?.transaction_status === 'cancelled') && (
+        <div className="lot-cancelled-banner animate-fade-in" role="alert">
+          <strong style={{ fontSize: 'var(--text-base)' }}>⊘ Lot Cancelled</strong>
+          <span style={{ fontSize: 'var(--text-sm)' }}>
+            {t('lotDetail.cancelledBanner', {
+              date: fmtDate(lot.cancelled_at || lot.created_at),
+              reason: lot.cancellation_reason || 'Cancelled by collector',
+            })}
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className="alert-banner alert-banner--warn animate-fade-in" role="alert">
@@ -248,9 +339,89 @@ export default function CollectorLotDetail() {
         </div>
       )}
 
+      {/* Delete Draft Modal */}
+      {showDeleteModal && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-card animate-scale-in">
+            <h3 className="modal-card__title">🗑️ {t('lotDetail.deleteConfirmTitle')}</h3>
+            <p className="modal-card__desc">{t('lotDetail.deleteConfirmDesc')}</p>
+            {actionError && (
+              <div className="alert-banner alert-banner--error" style={{ marginBottom: 'var(--space-3)' }}>
+                {actionError}
+              </div>
+            )}
+            <div className="modal-actions">
+              <button
+                className="btn btn-ghost"
+                disabled={actionBusy}
+                onClick={() => setShowDeleteModal(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                className="btn btn-accent"
+                style={{ background: 'var(--color-destructive)', borderColor: 'var(--color-destructive)' }}
+                disabled={actionBusy}
+                onClick={handleDeleteLot}
+              >
+                {actionBusy ? t('lotDetail.deleting') : t('lotDetail.deleteLot')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Lot Modal */}
+      {showCancelModal && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal-card animate-scale-in">
+            <h3 className="modal-card__title">⚠️ {t('lotDetail.cancelConfirmTitle')}</h3>
+            <p className="modal-card__desc">{t('lotDetail.cancelConfirmDesc')}</p>
+
+            <div style={{ marginTop: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+              <label htmlFor="cancel-reason" className="detail-item__label" style={{ display: 'block', marginBottom: 'var(--space-1)' }}>
+                {t('lotDetail.cancelReasonLabel')} *
+              </label>
+              <textarea
+                id="cancel-reason"
+                className="form-input"
+                rows={3}
+                style={{ width: '100%', resize: 'vertical' }}
+                placeholder={t('lotDetail.cancelReasonPlaceholder')}
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+              />
+            </div>
+
+            {actionError && (
+              <div className="alert-banner alert-banner--error" style={{ marginBottom: 'var(--space-3)' }}>
+                {actionError}
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button
+                className="btn btn-ghost"
+                disabled={actionBusy}
+                onClick={() => setShowCancelModal(false)}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                className="btn btn-accent"
+                style={{ background: 'var(--color-destructive)', borderColor: 'var(--color-destructive)' }}
+                disabled={actionBusy}
+                onClick={handleCancelLot}
+              >
+                {actionBusy ? t('lotDetail.cancelling') : t('lotDetail.cancelLot')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!lot && !loading ? (
         <div className="empty-state card">
-
           <p style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)' }}>
             {t('lotDetail.loadError')}
           </p>

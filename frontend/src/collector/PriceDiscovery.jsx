@@ -7,17 +7,44 @@ import {
 import { Line } from 'react-chartjs-2';
 import {
   getPriceTrends, getRecyclerRateBoard, getInstantValuation,
+  getMarketPulse, refreshMarketPrices,
   MATERIAL_CATEGORIES, DEFAULT_LOCATION,
 } from '../api/client';
-import { PageLoader, SkeletonCard } from '../components/LoadingSpinner';
+import { PageLoader, SkeletonCard, LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
 import './PriceDiscovery.css';
 import './PriceDiscoveryP2.css';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
-const LOCATIONS = ['Bengaluru', 'Mumbai', 'Delhi', 'Hyderabad', 'Chennai', 'Pune'];
+const LOCATIONS = ['Bengaluru', 'Delhi', 'Mumbai', 'Hyderabad', 'Chennai', 'Pune', 'Kolkata', 'Ahmedabad', 'Jaipur'];
+
+const BENCHMARK_HUBS = [
+  { name: 'Bengaluru', lat: 12.9716, lng: 77.5946 },
+  { name: 'Chennai', lat: 13.0827, lng: 80.2707 },
+  { name: 'Hyderabad', lat: 17.3850, lng: 78.4867 },
+  { name: 'Mumbai', lat: 19.0760, lng: 72.8777 },
+  { name: 'Pune', lat: 18.5204, lng: 73.8567 },
+  { name: 'Delhi', lat: 28.6139, lng: 77.2090 },
+  { name: 'Jaipur', lat: 26.9124, lng: 75.7873 },
+  { name: 'Ahmedabad', lat: 23.0225, lng: 72.5714 },
+  { name: 'Kolkata', lat: 22.5726, lng: 88.3639 },
+];
+
 const SAMPLE_WEIGHT = 1;
+
+function calcDistanceKm(lat1, lon1, lat2, lon2) {
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10;
+}
 
 function fmt(n) {
   if (n == null) return '—';
@@ -53,7 +80,15 @@ export default function PriceDiscovery() {
 
   const [trends, setTrends] = useState([]);
   const [rateRows, setRateRows] = useState([]);
+  const [recyclerSearch, setRecyclerSearch] = useState('');
   const [priceCards, setPriceCards] = useState({});
+  const [marketPulse, setMarketPulse] = useState(null);
+  const [syncingPrices, setSyncingPrices] = useState(false);
+  const [syncToast, setSyncToast] = useState('');
+
+  const [userCoords, setUserCoords] = useState(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState('');
 
   const [loadingTrend, setLoadingTrend] = useState(true);
   const [loadingRec, setLoadingRec] = useState(true);
@@ -66,7 +101,7 @@ export default function PriceDiscovery() {
   const stats = trendStats(trends);
   const catLabel = MATERIAL_CATEGORIES.find(c => c.id === category)?.label;
 
-  useEffect(() => {
+  const loadCards = useCallback(() => {
     setLoadingCards(true);
     Promise.allSettled(
       MATERIAL_CATEGORIES.map(cat =>
@@ -83,6 +118,16 @@ export default function PriceDiscovery() {
     }).finally(() => setLoadingCards(false));
   }, [location]);
 
+  useEffect(() => {
+    loadCards();
+  }, [loadCards]);
+
+  useEffect(() => {
+    getMarketPulse(location)
+      .then(r => setMarketPulse(r))
+      .catch(() => {});
+  }, [location]);
+
   const fetchTrends = useCallback(() => {
     setLoadingTrend(true);
     setError('');
@@ -94,13 +139,36 @@ export default function PriceDiscovery() {
 
   useEffect(() => { fetchTrends(); }, [fetchTrends]);
 
-  useEffect(() => {
+  const fetchRecyclerRates = useCallback(() => {
     setLoadingRec(true);
     getRecyclerRateBoard({ category, location })
       .then(r => setRateRows(Array.isArray(r.data) ? r.data : []))
       .catch(() => setRateRows([]))
       .finally(() => setLoadingRec(false));
   }, [category, location]);
+
+  useEffect(() => {
+    fetchRecyclerRates();
+  }, [fetchRecyclerRates]);
+
+  async function handleSyncLiveMarket() {
+    setSyncingPrices(true);
+    setSyncToast('');
+    setError('');
+    try {
+      await refreshMarketPrices(days);
+      setSyncToast('Market rates synchronized with live commodity scrap indices.');
+      fetchTrends();
+      loadCards();
+      fetchRecyclerRates();
+      getMarketPulse(location).then(r => setMarketPulse(r)).catch(() => {});
+      setTimeout(() => setSyncToast(''), 4000);
+    } catch (err) {
+      setError('Could not refresh market prices. Using cached indexes.');
+    } finally {
+      setSyncingPrices(false);
+    }
+  }
 
   function speakPrice() {
     if (!synthRef.current) return;
@@ -206,31 +274,141 @@ export default function PriceDiscovery() {
     },
   };
 
+  function handleDetectGPS() {
+    if (!navigator.geolocation) {
+      setGpsError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setGpsLoading(true);
+    setGpsError('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        let closestHub = 'Bengaluru';
+        let minDist = Infinity;
+        for (const hub of BENCHMARK_HUBS) {
+          const dist = calcDistanceKm(lat, lng, hub.lat, hub.lng);
+          if (dist != null && dist < minDist) {
+            minDist = dist;
+            closestHub = hub.name;
+          }
+        }
+        setUserCoords({ lat, lng, closestHub, distanceToHub: minDist });
+        setLocation(closestHub);
+        setGpsLoading(false);
+      },
+      (err) => {
+        setGpsError(err.message || 'Unable to retrieve your GPS location.');
+        setGpsLoading(false);
+      },
+      { timeout: 10000, enableHighAccuracy: true }
+    );
+  }
+
   const filteredRecyclers = [...rateRows]
     .filter(r => (r.materials_accepted || []).includes(category))
-    .sort((a, b) => (b.offered_rate || 0) - (a.offered_rate || 0));
+    .map(r => {
+      const distance = userCoords
+        ? calcDistanceKm(userCoords.lat, userCoords.lng, r.latitude, r.longitude)
+        : null;
+      return { ...r, distance };
+    })
+    .filter(r => {
+      if (!recyclerSearch.trim()) return true;
+      const q = recyclerSearch.toLowerCase().trim();
+      const name = (r.name || '').toLowerCase();
+      const addr = (r.facility_location || r.service_area || '').toLowerCase();
+      return name.includes(q) || addr.includes(q);
+    })
+    .sort((a, b) => {
+      if (userCoords && a.distance != null && b.distance != null) {
+        return a.distance - b.distance;
+      }
+      return (b.offered_rate || 0) - (a.offered_rate || 0);
+    });
   const rateAsOf = rateRows.reduce((best, r) =>
     r.rate_date && (!best || r.rate_date > best) ? r.rate_date : best, null);
 
+  const currentPulseItem = (marketPulse?.data || []).find(p => p.category === category);
+
   return (
     <div className="container">
-      <div className="animate-fade-in" style={{ marginBottom: 'var(--space-6)' }}>
-        <h1 className="section-title">{t('dashboard.priceBoard')}</h1>
-        <p className="section-subtitle">{t('priceDiscovery.subtitle')}</p>
+      <div className="animate-fade-in" style={{ marginBottom: 'var(--space-6)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+        <div>
+          <h1 className="section-title">{t('dashboard.priceBoard')}</h1>
+          <p className="section-subtitle">{t('priceDiscovery.subtitle')}</p>
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+          <button
+            className="btn btn-outline"
+            onClick={handleSyncLiveMarket}
+            disabled={syncingPrices}
+            title="Fetch latest e-waste commodity benchmark rates across India"
+          >
+            {syncingPrices ? <><LoadingSpinner size="sm" /> Syncing…</> : '⚡ Sync Live Market Rates'}
+          </button>
+        </div>
       </div>
+
+      {syncToast && (
+        <div className="alert-banner alert-banner--success animate-fade-in" style={{ marginBottom: 'var(--space-4)' }}>
+          ✅ {syncToast}
+        </div>
+      )}
+
+      {currentPulseItem && (
+        <div className="card animate-fade-in" style={{ background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.05) 0%, rgba(31, 120, 200, 0.05) 100%)', border: '1px solid rgba(124, 58, 237, 0.15)', padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <span style={{ fontSize: '1.1rem' }}>📈</span>
+            <span style={{ fontSize: 'var(--text-sm)' }}>
+              <strong>Market Driver:</strong> {currentPulseItem.commodity_driver}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+            <span className="status-badge status-badge--success" style={{ fontSize: 'var(--text-xs)' }}>
+              Demand: {currentPulseItem.regional_demand}
+            </span>
+            <span className="status-badge" style={{ fontSize: 'var(--text-xs)' }}>
+              {currentPulseItem.hub}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Controls */}
       <div className="p2-pd-controls animate-fade-in">
-        <div className="form-group" style={{ flex: 1, minWidth: 160 }}>
-          <label className="form-label" htmlFor="pd-location">{t('prices.location')}</label>
+        <div className="form-group" style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-1)' }}>
+            <label className="form-label" htmlFor="pd-location" style={{ marginBottom: 0 }}>{t('prices.location')}</label>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={handleDetectGPS}
+              disabled={gpsLoading}
+              style={{ fontSize: 'var(--text-xs)', padding: '2px 8px', borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+              title="Detect your exact GPS coordinates and match closest pricing hub"
+            >
+              {gpsLoading ? '📍 Locating…' : '📍 Use GPS'}
+            </button>
+          </div>
           <select
             id="pd-location"
             className="form-input form-select"
             value={location}
-            onChange={e => setLocation(e.target.value)}
+            onChange={e => { setLocation(e.target.value); setUserCoords(null); }}
           >
             {LOCATIONS.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
+          {userCoords && (
+            <span className="text-xs text-muted" style={{ display: 'block', marginTop: '4px' }}>
+              📍 GPS: {userCoords.lat.toFixed(4)}, {userCoords.lng.toFixed(4)} ({userCoords.distanceToHub.toFixed(1)} km to {userCoords.closestHub} hub)
+            </span>
+          )}
+          {gpsError && (
+            <span className="text-xs text-danger" style={{ display: 'block', marginTop: '4px', color: 'var(--color-danger)' }}>
+              ⚠️ {gpsError}
+            </span>
+          )}
         </div>
         <div className="form-group" style={{ flex: 1, minWidth: 130 }}>
           <label className="form-label" htmlFor="pd-days">{t('prices.days')}</label>
@@ -450,12 +628,53 @@ export default function PriceDiscovery() {
           </p>
         )}
 
+        {/* Search filter for recycler rates */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: '1 1 240px', minWidth: '220px' }}>
+            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', opacity: 0.6, fontSize: '0.9rem' }} aria-hidden="true">🔍</span>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Filter by recycler name or address…"
+              value={recyclerSearch}
+              onChange={(e) => setRecyclerSearch(e.target.value)}
+              style={{ paddingLeft: '32px', paddingRight: recyclerSearch ? '32px' : '10px', fontSize: 'var(--text-sm)' }}
+              aria-label="Filter recyclers by name or address"
+            />
+            {recyclerSearch && (
+              <button
+                type="button"
+                onClick={() => setRecyclerSearch('')}
+                style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, fontSize: '1rem', padding: '2px 6px' }}
+                title="Clear filter"
+                aria-label="Clear filter"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {recyclerSearch && (
+            <span className="text-xs text-muted">
+              Showing {filteredRecyclers.length} of {rateRows.filter(r => (r.materials_accepted || []).includes(category)).length} recyclers
+            </span>
+          )}
+        </div>
+
         {loadingRec ? (
           <PageLoader />
         ) : filteredRecyclers.length === 0 ? (
           <div className="empty-state" style={{ minHeight: 100 }}>
-            
-            <p>{t('prices.noRecyclers')}</p>
+            <p>{recyclerSearch ? `No recyclers match "${recyclerSearch}".` : t('prices.noRecyclers')}</p>
+            {recyclerSearch && (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setRecyclerSearch('')}
+                style={{ marginTop: 'var(--space-2)' }}
+              >
+                Clear Filter
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -464,6 +683,7 @@ export default function PriceDiscovery() {
                 <tr>
                   <th>{t('prices.recyclerName')}</th>
                   <th>{t('prices.location')}</th>
+                  {userCoords && <th>Distance</th>}
                   <th>{t('prices.offered')}</th>
                   <th>{t('prices.pickup')}</th>
                   <th>vs {t('prices.buyingPrice')}</th>
@@ -489,6 +709,11 @@ export default function PriceDiscovery() {
                         <td style={{ color: 'var(--color-text-muted)' }}>
                           {r.facility_location}
                         </td>
+                        {userCoords && (
+                          <td style={{ color: 'var(--color-primary)', fontWeight: 'var(--weight-medium)' }}>
+                            {r.distance != null ? `📍 ${r.distance} km` : '—'}
+                          </td>
+                        )}
                         <td style={{ fontWeight: 'var(--weight-bold)', color: 'var(--color-accent)' }}>
                           {r.offered_rate ? `${fmt(r.offered_rate)}/kg` : '—'}
                         </td>

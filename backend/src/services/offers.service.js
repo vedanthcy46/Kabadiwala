@@ -314,6 +314,7 @@ export const getAvailableLots = async (recyclerId) => {
      JOIN transactions t ON m.lot_id = t.lot_id
      LEFT JOIN collectors c ON m.collector_id = c.id
      WHERE t.transaction_status = 'quoted'
+       AND NOT COALESCE(m.is_cancelled, false)
        AND m.category = ANY($1::text[])
        AND NOT EXISTS (
          SELECT 1 FROM offers o

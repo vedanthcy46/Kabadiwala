@@ -2,6 +2,9 @@ import app from './app.js';
 import { logger } from './utils/logger.js';
 import { pool } from './db.js';
 import { startKeepAlive } from './utils/keepAlive.js';
+import { backfillMissingCoordinates } from './services/location.service.js';
+import { seedDynamicNationalPrices } from './services/marketPrice.service.js';
+import { seedNationalRecyclers } from './seedNationalRecyclers.js';
 
 const PORT = process.env.PORT || 3000;
 
@@ -9,11 +12,30 @@ let server;
 
 // Verify DB Connection before starting the server
 pool.query('SELECT NOW()')
-  .then(() => {
+  .then(async () => {
     logger.info('Connected to PostgreSQL database');
+
     server = app.listen(PORT, () => {
       logger.info(`Listening to port ${PORT}`);
       startKeepAlive();
+    });
+
+    // Run background data sync and seeding asynchronously without blocking HTTP server
+    (async () => {
+      try {
+        const recCount = await pool.query('SELECT COUNT(*)::int AS count FROM recyclers');
+        if (recCount.rows[0].count < 50) {
+          await seedNationalRecyclers({ verbose: false });
+        }
+      } catch (err) {
+        logger.warn('National recyclers seed notice:', err.message);
+      }
+      await backfillMissingCoordinates().catch(() => {});
+      await seedDynamicNationalPrices(90).catch((err) => {
+        logger.warn('Dynamic price sync warning:', err.message);
+      });
+    })().catch((err) => {
+      logger.warn('Background sync notice:', err.message);
     });
   })
   .catch((err) => {

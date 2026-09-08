@@ -13,13 +13,13 @@ import { useTranslation } from '../i18n/config.js';
 import './Safety.css';
 
 const SECTION_META = [
-  { id: 'general',   icon: '', color: 'blue',   warning: false },
-  { id: 'ppe',       icon: '', color: 'purple',  warning: false },
-  { id: 'materials', icon: '', color: 'green',   warning: false },
-  { id: 'sharp',     icon: '', color: 'amber',   warning: true  },
-  { id: 'ewaste',    icon: '', color: 'purple',  warning: true  },
-  { id: 'chemical',  icon: '', color: 'red',     warning: true  },
-  { id: 'emergency', icon: '', color: 'red',     warning: true  },
+  { id: 'general',   icon: '', color: 'blue',   warning: false, hasDoNot: false },
+  { id: 'ppe',       icon: '', color: 'purple',  warning: false, hasDoNot: false },
+  { id: 'materials', icon: '', color: 'green',   warning: false, hasDoNot: false },
+  { id: 'sharp',     icon: '', color: 'amber',   warning: true,  hasDoNot: true  },
+  { id: 'ewaste',    icon: '', color: 'purple',  warning: true,  hasDoNot: true  },
+  { id: 'chemical',  icon: '', color: 'red',     warning: true,  hasDoNot: true  },
+  { id: 'emergency', icon: '', color: 'red',     warning: true,  hasDoNot: true  },
 ];
 
 const COLOR_MAP = {
@@ -30,25 +30,16 @@ const COLOR_MAP = {
   red:    { bg: 'var(--color-destructive-light)', border: 'var(--color-destructive)', icon: 'var(--color-destructive)' },
 };
 
-function SafetySection({ sectionId, icon, color, warning, t }) {
+function SafetySection({ sectionId, icon, color, warning, hasDoNot, t }) {
   const colors = COLOR_MAP[color] ?? COLOR_MAP.blue;
   const titleKey = `safety.sections.${sectionId}.title`;
   const itemsKey = `safety.sections.${sectionId}.items`;
   const doNotKey = `safety.sections.${sectionId}.doNot`;
 
-  // Resolve items array from locale — these are stored as arrays in JSON
-  // t() returns string for string values; for arrays we use the JSON directly
-  // The locale has arrays as string arrays indexed numerically, but our t() resolves scalars only.
-  // We import directly via the locales object to get arrays.
   const title = t(titleKey);
-  const items = t(itemsKey); // will return the array *reference* if resolveKey hits an array node
-  const doNot = t(doNotKey);
+  const items = t(itemsKey);
+  const doNot = hasDoNot ? t(doNotKey) : null;
 
-  // Since our simple t() only resolves strings, we handle arrays via the
-  // locale JSON structure. Items are stored in locale as arrays so we use
-  // the locale resolution from config and return them as-is when they're arrays.
-  // Our translate() already returns undefined for non-strings and falls back to key.
-  // To properly serve arrays, we extend the lookup here with a helper.
   const safeItems = Array.isArray(items) ? items : [];
   const safeDoNot = Array.isArray(doNot) ? doNot : [];
 
@@ -152,6 +143,7 @@ export default function SafetyGuidance() {
             icon={s.icon}
             color={s.color}
             warning={s.warning}
+            hasDoNot={s.hasDoNot}
             t={t}
           />
         ))}

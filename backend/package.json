@@ -17,7 +17,9 @@
     "reset": "node src/reset.js",
     "keepalive": "node scripts/keepalive.js",
     "setup": "node src/setup.js",
-    "setup:force": "node src/setup.js -- --force"
+    "setup:force": "node src/setup.js -- --force",
+    "export:ai-dataset": "node scripts/export_training_dataset.js",
+    "eval:ai-dataset": "node scripts/evaluate_training_dataset.js"
   },
   "dependencies": {
     "cloudinary": "^2.11.0",
@@ -30,6 +32,7 @@
     "pg": "^8.11.3",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
+    "xlsx": "^0.18.5",
     "zod": "^4.5.4"
   },
   "devDependencies": {

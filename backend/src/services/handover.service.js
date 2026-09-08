@@ -18,6 +18,17 @@ const generateLotId = (category) => {
 };
 
 /**
+ * Guard against stale/invalid collector ids (e.g. a session left over from a
+ * previous DB reset). Returns a clean 404 instead of a raw FK 500.
+ */
+const ensureCollectorExists = async (collectorId) => {
+  const res = await query('SELECT id FROM collectors WHERE id = $1', [collectorId]);
+  if (res.rows.length === 0) {
+    throw new ApiError(404, 'Collector account not found — please log in again');
+  }
+};
+
+/**
  * Generate a human-readable display lot ID in the format:
  *   LOT-YYYY-ABC-NNNNNN
  * where YYYY = year, ABC = 3-letter city code, NNNNNN = zero-padded sequence.
@@ -139,6 +150,8 @@ export const createLot = async (data) => {
     image_ref, image_refs, approx_weight_kg, condition, source_type,
     location, collection_lat, collection_lng,
   } = data;
+
+  await ensureCollectorExists(collector_id);
 
   const lot_id = generateLotId(category);
   const display_lot_id = await generateDisplayLotId(location);
@@ -780,4 +793,120 @@ export const getLotImages = async (lotId) => {
     [lotId]
   );
   return result.rows;
+};
+
+/**
+ * Cancel or Delete a Lot in accordance with SIH 229 rules:
+ * - If freshly created with NO offers and NO traceability: hard delete allowed.
+ * - If offers exist (requested/offered/accepted) but NOT handed over/paid: soft cancel with reason,
+ *   retain evidence photos and emit LOT_CANCELLED event.
+ * - If handed over, confirmed, or paid: operation strictly forbidden (locked).
+ *
+ * @param {string} lotId
+ * @param {number|null} collectorId
+ * @param {Object} options { reason }
+ * @returns {Promise<Object>}
+ */
+export const cancelOrDeleteLot = async (lotId, collectorId = null, options = {}) => {
+  const reason = options.reason || 'Cancelled by collector';
+
+  // 1. Fetch lot and transaction details
+  const lotResult = await query(
+    `SELECT m.*, t.transaction_status, t.payment_status
+     FROM materials m
+     LEFT JOIN transactions t ON m.lot_id = t.lot_id
+     WHERE m.lot_id = $1`,
+    [lotId]
+  );
+
+  if (lotResult.rows.length === 0) {
+    throw new ApiError(404, `Lot ${lotId} not found`);
+  }
+
+  const lot = lotResult.rows[0];
+
+  if (collectorId && lot.collector_id && lot.collector_id !== Number(collectorId)) {
+    throw new ApiError(403, 'You do not have permission to cancel or delete this lot');
+  }
+
+  if (lot.is_cancelled || lot.transaction_status === 'cancelled') {
+    throw new ApiError(400, 'This lot has already been cancelled');
+  }
+
+  // 2. Check for active handover or payment
+  const traceResult = await query(
+    `SELECT id, status, handover_reference_number FROM traceability WHERE lot_id = $1 LIMIT 1`,
+    [lotId]
+  );
+
+  const hasHandover = traceResult.rows.length > 0;
+  const isHandedOverOrConfirmed = ['handed_over', 'confirmed'].includes(lot.transaction_status);
+  const isPaid = lot.payment_status === 'paid';
+
+  if (hasHandover || isHandedOverOrConfirmed || isPaid) {
+    throw new ApiError(400, 'Cannot cancel or delete a lot once handover has begun or payment is recorded');
+  }
+
+  // 3. Check for offers
+  const offersResult = await query(
+    `SELECT id, offer_status FROM offers WHERE lot_id = $1`,
+    [lotId]
+  );
+  const hasOffers = offersResult.rows.length > 0;
+
+  // RULE A: Clean hard delete only if freshly created with NO offers and NO handover
+  if (!hasOffers) {
+    // Delete preliminary images, events, transaction, and material cleanly
+    await query(`DELETE FROM lot_events WHERE lot_id = $1`, [lotId]);
+    await query(`DELETE FROM lot_images WHERE lot_id = $1`, [lotId]);
+    await query(`DELETE FROM transactions WHERE lot_id = $1`, [lotId]);
+    await query(`DELETE FROM materials WHERE lot_id = $1`, [lotId]);
+
+    return {
+      action: 'deleted',
+      lot_id: lotId,
+      message: 'Draft lot deleted successfully',
+    };
+  }
+
+  // RULE B: Soft cancel with audit trail
+  await query(
+    `UPDATE materials
+     SET is_cancelled = true,
+         cancellation_reason = $1,
+         cancelled_at = NOW()
+     WHERE lot_id = $2`,
+    [reason, lotId]
+  );
+
+  await query(
+    `UPDATE transactions
+     SET transaction_status = 'cancelled'
+     WHERE lot_id = $1`,
+    [lotId]
+  );
+
+  // Expire any active offers
+  await query(
+    `UPDATE offers
+     SET offer_status = 'expired'
+     WHERE lot_id = $1 AND offer_status IN ('requested', 'offered')`,
+    [lotId]
+  );
+
+  // Emit LOT_CANCELLED event
+  await emitEvent(
+    lotId,
+    'LOT_CANCELLED',
+    'collector',
+    lot.collector_id,
+    { reason, previous_status: lot.transaction_status }
+  );
+
+  return {
+    action: 'cancelled',
+    lot_id: lotId,
+    reason,
+    message: 'Lot cancelled and recorded in audit history',
+  };
 };

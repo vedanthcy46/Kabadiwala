@@ -11,4 +11,14 @@ router.get(
   priceController.getPriceTrends
 );
 
+router.get(
+  '/market-pulse',
+  priceController.getMarketPulse
+);
+
+router.post(
+  '/refresh-market',
+  priceController.refreshMarketPrices
+);
+
 export default router;

@@ -217,6 +217,21 @@ describe('Handover & Traceability API', () => {
     expect(res.body.data.scan_verified).toBe(true);
   });
 
+  it('POST /v1/handover/lots rejects invalid collector id', async () => {
+    // A collector id that no longer exists should fail cleanly (404), not
+    // leak a raw foreign-key 500 (stale session after a DB reset).
+    const res = await request(server)
+      .post('/v1/handover/lots')
+      .send({
+        collector_id: 999,
+        category: 'PCB',
+        approx_weight_kg: 4,
+        location: 'Bengaluru',
+      });
+
+    expect(res.status).toBe(404);
+  });
+
   it('POST /v1/handover/lots rejects invalid category', async () => {
     const res = await request(server)
       .post('/v1/handover/lots')

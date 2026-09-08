@@ -52,14 +52,28 @@ describe('Recycler Matching Validation', () => {
     expect(result.data.maxDistanceKm).toBe(100);
   });
 
-  it('rejects missing lat', () => {
+  it('rejects missing lat and lng when no location is given', () => {
+    const result = schema.safeParse({ category: 'PCB' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects lat without lng', () => {
+    const result = schema.safeParse({ category: 'PCB', lat: '12.97' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects lng without lat', () => {
     const result = schema.safeParse({ category: 'PCB', lng: '77.59' });
     expect(result.success).toBe(false);
   });
 
-  it('rejects missing lng', () => {
-    const result = schema.safeParse({ category: 'PCB', lat: '12.97' });
-    expect(result.success).toBe(false);
+  it('accepts a location without lat/lng', () => {
+    const result = schema.safeParse({ category: 'PCB', location: 'Delhi' });
+    expect(result.success).toBe(true);
+    expect(result.data.location).toBe('Delhi');
+    expect(result.data.lat).toBeUndefined();
+    expect(result.data.lng).toBeUndefined();
+    expect(result.data.maxDistanceKm).toBe(50);
   });
 
   it('defaults maxDistanceKm to 50', () => {

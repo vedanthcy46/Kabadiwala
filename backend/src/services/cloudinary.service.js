@@ -6,7 +6,7 @@ dotenv.config();
 
 const MAX_DATA_URL_BYTES = 6 * 1024 * 1024;
 
-const isDataImage = (value) => typeof value === 'string' && /^data:image\/(jpeg|png|webp);base64,/i.test(value);
+const isDataImage = (value) => typeof value === 'string' && /^data:image\/[a-zA-Z0-9.+_-]+;base64,/i.test(value);
 
 const cloudinaryReady = () => Boolean(
   process.env.CLOUDINARY_CLOUD_NAME
@@ -15,20 +15,24 @@ const cloudinaryReady = () => Boolean(
 );
 
 /**
- * Upload a client-compressed image to Cloudinary and return its durable HTTPS
- * URL. The database deliberately receives this URL only, never the base64
- * image payload or Cloudinary credentials.
+ * Upload any data image to Cloudinary and return its secure HTTPS URL.
+ * @param {string} image - Base64 data URL or existing HTTPS URL
+ * @param {Object} opts
+ * @param {string} opts.folder - Cloudinary target folder
+ * @param {string} opts.publicId - Public ID for the uploaded asset
+ * @returns {Promise<string|null>}
  */
-export const uploadLotImage = async (image, { lotId, imageType }) => {
-  // Seeded/test records and pre-existing Cloudinary URLs remain readable.
-  // New images sent by the web app are data URLs and must be uploaded.
+export const uploadImage = async (image, { folder = 'kabadiwala/uploads', publicId = `img-${Date.now()}` } = {}) => {
+  if (!image) return null;
+  // If already a hosted URL (e.g. Cloudinary HTTPS), return as-is
   if (!isDataImage(image)) return image;
 
   if (Buffer.byteLength(image, 'utf8') > MAX_DATA_URL_BYTES) {
     throw new ApiError(413, 'Image is too large. Please choose a photo under 6 MB.');
   }
   if (!cloudinaryReady()) {
-    throw new ApiError(503, 'Image storage is not configured. Add the Cloudinary credentials to backend/.env.');
+    console.warn('[cloudinary] Storage not configured. Image not uploaded.');
+    return null;
   }
 
   cloudinary.config({
@@ -40,8 +44,8 @@ export const uploadLotImage = async (image, { lotId, imageType }) => {
 
   try {
     const result = await cloudinary.uploader.upload(image, {
-      folder: `kabadiwala/lots/${lotId}`,
-      public_id: `${imageType.toLowerCase()}-${Date.now()}`,
+      folder,
+      public_id: publicId,
       resource_type: 'image',
       overwrite: false,
       unique_filename: true,
@@ -49,8 +53,19 @@ export const uploadLotImage = async (image, { lotId, imageType }) => {
     });
     return result.secure_url;
   } catch (err) {
-    // Log but don't crash — lot creation proceeds without the image
-    console.error(`[cloudinary] Upload failed (${err.message}). Lot will be saved without image.`);
+    console.error(`[cloudinary] Upload failed (${err.message}).`);
     return null;
   }
+};
+
+/**
+ * Upload a client-compressed image to Cloudinary and return its durable HTTPS
+ * URL. The database deliberately receives this URL only, never the base64
+ * image payload or Cloudinary credentials.
+ */
+export const uploadLotImage = async (image, { lotId, imageType }) => {
+  return uploadImage(image, {
+    folder: `kabadiwala/lots/${lotId}`,
+    publicId: `${imageType.toLowerCase()}-${Date.now()}`,
+  });
 };

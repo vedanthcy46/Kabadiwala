@@ -1,6 +1,6 @@
 // src/migrate.js
 // Run: npm run migrate
-// Executes sql/01_schema.sql against the connected database.
+// Executes the schema + supporting tables/views against the connected database.
 
 import fs from 'fs';
 import path from 'path';
@@ -12,13 +12,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 async function main() {
   const schemaPath = path.join(__dirname, '..', 'sql', '01_schema.sql');
   const lotSystemPath = path.join(__dirname, '..', 'sql', '06_lot_system.sql');
+  const aiFeedbackPath = path.join(__dirname, '..', 'sql', '06_ai_feedback.sql');
+  const aiGovernancePath = path.join(__dirname, '..', 'sql', '08_ai_governance.sql');
   const sql = fs.readFileSync(schemaPath, 'utf8');
   const lotSystemSql = fs.readFileSync(lotSystemPath, 'utf8');
+  const aiFeedbackSql = fs.readFileSync(aiFeedbackPath, 'utf8');
+  const aiGovernanceSql = fs.readFileSync(aiGovernancePath, 'utf8');
 
   try {
     console.log('Running schema migration...');
     await pool.query(sql);
     await pool.query(lotSystemSql);
+    await pool.query(aiFeedbackSql);
+    await pool.query(aiGovernanceSql);
     console.log('✅ Schema created successfully.');
 
     const res = await pool.query(`

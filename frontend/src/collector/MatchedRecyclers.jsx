@@ -5,7 +5,7 @@ import {
   requestQuote, acceptOffer, rejectOffer, getOffersByLot,
   DEFAULT_LAT, DEFAULT_LNG, DEMO_COLLECTOR_ID,
 } from '../api/client';
-import { currentCollectorId } from '../services/auth';
+import { currentCollectorId, getSession } from '../services/auth';
 import { StatusBadge } from '../components/StatusBadge';
 import { PageLoader, LoadingSpinner } from '../components/LoadingSpinner';
 import RecyclersMap from './RecyclersMap';
@@ -15,49 +15,124 @@ import './MatchedRecyclers.css';
 export default function MatchedRecyclers() {
   const { state } = useLocation();
   const { t } = useTranslation();
+  const session = getSession();
 
   const category    = state?.category || 'PCB';
   const lotId       = state?.lotId;
   const valuation   = state?.valuation;
+  const city        = (state?.location || session?.operating_location || '').trim();
 
-  const [recyclers, setRecyclers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  // Coordinates resolution:
+  // 1. Coordinates passed explicitly from CreateLot / state
+  // 2. Embedded coordinates in location string e.g. "GPS Location (12.9238, 77.5019)"
+  // 3. Collector's registered GPS coordinates from account session
+  // 4. Defaults
+  let initialLat = state?.lat != null ? Number(state.lat) : null;
+  let initialLng = state?.lng != null ? Number(state.lng) : null;
 
-  // Quote marketplace state
-  const [offers, setOffers] = useState([]);
-  const [offersError, setOffersError] = useState('');
-  const [requesting, setRequesting] = useState(null);   // recycler_id
-  const [offerBusy, setOfferBusy] = useState(null);     // offer id being accepted/rejected
-  const [quoteToast, setQuoteToast] = useState('');
+  if ((initialLat == null || initialLng == null) && state?.location) {
+    const coordsMatch = String(state.location).match(/(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/);
+    if (coordsMatch) {
+      initialLat = parseFloat(coordsMatch[1]);
+      initialLng = parseFloat(coordsMatch[2]);
+    }
+  }
 
-  // Handover state (post-acceptance)
-  const [handingOver, setHandingOver] = useState(null); // recycler_id being processed
-  const [handoverResult, setHandoverResult] = useState(null); // { reference, recyclerName, queued? }
+  if (initialLat == null || initialLng == null) {
+    initialLat = session?.latitude != null ? Number(session.latitude) : DEFAULT_LAT;
+    initialLng = session?.longitude != null ? Number(session.longitude) : DEFAULT_LNG;
+  }
 
-  const [lat, setLat] = useState(DEFAULT_LAT);
-  const [lng, setLng] = useState(DEFAULT_LNG);
+  const [lat, setLat] = useState(initialLat);
+  const [lng, setLng] = useState(initialLng);
+  const [mapCenter, setMapCenter] = useState([initialLat, initialLng]);
   const [selectedId, setSelectedId] = useState(null);
 
-  // Try to get user location, fall back to Bengaluru
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        pos => { setLat(pos.coords.latitude); setLng(pos.coords.longitude); },
-        () => {} // silent fallback
-      );
-    }
-  }, []);
+  const [detectingGps, setDetectingGps] = useState(false);
 
+  // If no registered GPS in session or state, fallback to browser geolocation
   useEffect(() => {
+    if (session?.latitude != null && session?.longitude != null) return;
+    if (state?.lat != null && state?.lng != null) return;
+    if (!navigator.geolocation) return;
+    setDetectingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setLat(pos.coords.latitude);
+        setLng(pos.coords.longitude);
+        setMapCenter([pos.coords.latitude, pos.coords.longitude]);
+        setDetectingGps(false);
+      },
+      () => {
+        setDetectingGps(false);
+      }
+    );
+  }, [session, state]);
+
+  const [radiusKm, setRadiusKm] = useState(150);
+  const [recyclers, setRecyclers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [offers, setOffers] = useState([]);
+  const [offersError, setOffersError] = useState('');
+  const [requesting, setRequesting] = useState(null);
+  const [quoteToast, setQuoteToast] = useState('');
+  const [offerBusy, setOfferBusy] = useState(null);
+  const [handingOver, setHandingOver] = useState(null);
+  const [handoverResult, setHandoverResult] = useState(null);
+
+  const filteredRecyclers = recyclers.filter((r) => {
+    if (!searchTerm.trim()) return true;
+    const q = searchTerm.toLowerCase().trim();
+    const name = (r.name || '').toLowerCase();
+    const location = (r.facility_location || r.service_area || '').toLowerCase();
+    return name.includes(q) || location.includes(q);
+  });
+
+  const fetchRecyclers = useCallback((searchRadius) => {
     setLoading(true);
-    // GET /v1/recyclers/match?category=&lat=&lng=
-    // Returns: [{ id, name, distance_km, match_score, offered_rate, materials_accepted, service_area, pickup_availability }]
-    getMatchedRecyclers({ category, lat, lng })
-      .then(r => setRecyclers(Array.isArray(r.data) ? r.data : []))
+    setError('');
+    const rad = searchRadius || radiusKm;
+
+    const queryParams = {
+      category,
+      maxDistanceKm: rad,
+      lat,
+      lng,
+      location: city || undefined,
+    };
+
+    getMatchedRecyclers(queryParams)
+      .then(r => {
+        if (r.location?.lat != null && r.location?.lng != null) {
+          setMapCenter([r.location.lat, r.location.lng]);
+          setLat(r.location.lat);
+          setLng(r.location.lng);
+        } else if (lat != null && lng != null) {
+          setMapCenter([lat, lng]);
+        }
+        const list = Array.isArray(r.data) ? r.data : [];
+        setRecyclers(list);
+        if (list.length === 0 && rad < 1000) {
+          // Auto-expand search if no local recyclers found within city radius
+          getMatchedRecyclers({ ...queryParams, maxDistanceKm: 1500 })
+            .then(res2 => {
+              if (Array.isArray(res2.data) && res2.data.length > 0) {
+                setRecyclers(res2.data);
+                setRadiusKm(1500);
+              }
+            })
+            .catch(() => {});
+        }
+      })
       .catch(() => setError(t('recyclers.loadError')))
       .finally(() => setLoading(false));
-  }, [category, lat, lng]);
+  }, [category, lat, lng, city, radiusKm, t]);
+
+  useEffect(() => {
+    fetchRecyclers();
+  }, [category, lat, lng, city]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load quote offers for the lot (marketplace state)
   const loadOffers = useCallback(() => {
@@ -161,9 +236,15 @@ export default function MatchedRecyclers() {
     }
   }
 
-  // Lower score = better match. Invert for % display.
-  function scoreToPercent(score) {
-    return Math.max(0, Math.round((1 - Math.min(score ?? 0.5, 1)) * 100));
+  // Newer API returns suitability (0–100, higher = better). Older clients fall
+  // back to inverting the legacy match_score (lower = better).
+  function suitabilityOf(r) {
+    if (r.suitability != null) return Math.max(0, Math.min(100, Math.round(Number(r.suitability))));
+    return Math.max(0, Math.round((1 - Math.min(r.match_score ?? 0.5, 1)) * 100));
+  }
+
+  function pctScore(v) {
+    return Math.max(0, Math.min(100, Math.round((v ?? 0.5) * 100)));
   }
 
   function offerForRecycler(recyclerId) {
@@ -248,7 +329,19 @@ export default function MatchedRecyclers() {
       <div className="animate-fade-in" style={{ marginBottom: 'var(--space-6)' }}>
         <Link to="/collector/create-lot" className="back-link">{t('common.back')}</Link>
         <h1 className="section-title" style={{ marginTop: 'var(--space-3)' }}>{t('recyclers.title')}</h1>
-        <p className="section-subtitle">{t('recyclers.subtitle')}</p>
+        <p className="section-subtitle">
+          {t('recyclers.subtitle')}
+          {detectingGps && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)', marginLeft: 'var(--space-2)', color: 'var(--color-primary)' }}>
+              · <LoadingSpinner size="sm" /> Locating…
+            </span>
+          )}
+          {!detectingGps && lat != null && lng != null && (
+            <span style={{ display: 'inline-block', marginLeft: 'var(--space-2)', color: 'var(--color-primary)' }}>
+              · 📍 {city && !city.startsWith('GPS Location') ? `${city} (${lat.toFixed(4)}, ${lng.toFixed(4)})` : `GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`}
+            </span>
+          )}
+        </p>
       </div>
 
       {/* Lot Summary Banner */}
@@ -356,22 +449,71 @@ export default function MatchedRecyclers() {
             </section>
           )}
 
+          {/* ── Search & Filter Bar ─────────────────────────────────────────── */}
+          <div className="search-filter-card card animate-fade-in" style={{ marginBottom: 'var(--space-4)', padding: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+              <span style={{ fontSize: '1.1rem', opacity: 0.7 }} aria-hidden="true">🔍</span>
+              <input
+                type="text"
+                className="form-input"
+                placeholder={t('recyclers.searchPlaceholder')}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ flex: 1, padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)' }}
+                aria-label={t('recyclers.searchPlaceholder')}
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => setSearchTerm('')}
+                  style={{ padding: '0.25rem 0.5rem', fontSize: 'var(--text-xs)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  title={t('common.clear')}
+                  aria-label={t('common.clear')}
+                >
+                  ✕ {t('common.clear')}
+                </button>
+              )}
+            </div>
+            {searchTerm && (
+              <div style={{ marginTop: 'var(--space-2)', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                Showing {filteredRecyclers.length} of {recyclers.length} matched recyclers
+              </div>
+            )}
+          </div>
+
           <div className="map-wrap card">
             <RecyclersMap
-              recyclers={recyclers}
-              center={[lat, lng]}
+              recyclers={filteredRecyclers}
+              center={mapCenter}
               radiusKm={50}
               selectedId={selectedId}
               onSelect={(id) => setSelectedId(id)}
             />
           </div>
-          <div className="recycler-list">
-          {recyclers.map((r, i) => {
+
+          {filteredRecyclers.length === 0 ? (
+            <div className="empty-state card" style={{ marginTop: 'var(--space-4)' }}>
+              <p style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-semibold)' }}>
+                {t('recyclers.noSearchMatch')}
+              </p>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setSearchTerm('')}
+                style={{ marginTop: 'var(--space-3)' }}
+              >
+                Clear Search Filter
+              </button>
+            </div>
+          ) : (
+            <div className="recycler-list">
+              {filteredRecyclers.map((r, i) => {
             // Matching API returns `id` as the recycler primary key
             const recyclerId = r.id ?? r.recycler_id;
             const isHandingOver = handingOver === recyclerId;
             const isRequesting = requesting === recyclerId;
-            const pct = scoreToPercent(r.match_score);
+            const pct = suitabilityOf(r);
 
             const myOffer = offerForRecycler(recyclerId);
             const isAcceptor = acceptedOffer?.recycler_id === recyclerId;
@@ -394,10 +536,10 @@ export default function MatchedRecyclers() {
                   <StatusBadge status="authorized" />
                 </div>
 
-                {/* Match Score Bar */}
-                <div className="match-score" aria-label={`Match score: ${pct}%`}>
+                {/* Suitability Score Bar */}
+                <div className="match-score" aria-label={`${t('recyclers.suitability')}: ${pct}%`}>
                   <div className="match-score__label">
-                    <span>{t('recyclers.matchScore')}</span>
+                    <span>{t('recyclers.suitability')}</span>
                     <span className="match-score__pct">{pct}%</span>
                   </div>
                   <div
@@ -410,6 +552,24 @@ export default function MatchedRecyclers() {
                     <div className="match-score__fill" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
+
+                {/* Score breakdown — explainable, per the SIH explainability ask */}
+                {(r.score_price != null || r.score_reliability != null) && (
+                  <div className="recycler-card__scores" aria-label={t('recyclers.scoreBreakdown')}>
+                    <span className="score-chip" title={t('recyclers.scorePrice')}>
+                      {t('recyclers.scorePrice')} {pctScore(r.score_price)}%
+                    </span>
+                    <span className="score-chip" title={t('recyclers.scoreDistance')}>
+                      {t('recyclers.scoreDistance')} {pctScore(r.score_distance)}%
+                    </span>
+                    <span className="score-chip" title={t('recyclers.scorePickup')}>
+                      {t('recyclers.scorePickup')} {pctScore(r.score_pickup)}%
+                    </span>
+                    <span className="score-chip" title={t('recyclers.scoreReliability')}>
+                      {t('recyclers.scoreReliability')} {pctScore(r.score_reliability)}%
+                    </span>
+                  </div>
+                )}
 
                 {/* Stats */}
                 <div className="recycler-card__stats">
@@ -535,6 +695,7 @@ export default function MatchedRecyclers() {
             );
           })}
           </div>
+          )}
         </>
       )}
     </div>

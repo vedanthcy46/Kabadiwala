@@ -1,9 +1,14 @@
 import { z } from 'zod';
 
-const materialCategory = z.enum([
-  'PCB', 'Battery', 'Cable', 'Motor/Magnet Assembly',
-  'LCD Panel', 'CRT', 'Mixed Plastic',
-]);
+export const VALID_MATERIAL_CATEGORIES = [
+  'PCB', 'Battery', 'Cable',
+  'Motor', 'Motor/Magnet Assembly', 'Motors',
+  'LCD', 'LCD Panel', 'LCD Panels',
+  'CRT', 'CRTs',
+  'Plastic', 'Mixed Plastic', 'Plastics', 'Mixed Plastics',
+];
+
+const materialCategory = z.enum(VALID_MATERIAL_CATEGORIES);
 
 export const createLotSchema = {
   body: z.object({
@@ -11,15 +16,12 @@ export const createLotSchema = {
     category: materialCategory,
     sub_category: z.string().optional(),
     description: z.string().optional(),
-    // A collector may submit up to three collection-evidence photos. The
-    // legacy image_ref field stays supported for offline queue compatibility.
     image_ref: z.string().optional(),
     image_refs: z.array(z.string()).min(1).max(3).optional(),
     approx_weight_kg: z.coerce.number().positive('Weight must be positive'),
     condition: z.string().optional(),
     source_type: z.string().optional(),
     location: z.string().min(1, 'Location is required for valuation'),
-    // GPS evidence captured at collection time
     collection_lat: z.coerce.number().min(-90).max(90).optional(),
     collection_lng: z.coerce.number().min(-180).max(180).optional(),
   }),
@@ -69,3 +71,14 @@ export const getLotsByRecyclerSchema = {
     recyclerId: z.coerce.number().int().positive(),
   }),
 };
+
+export const cancelLotSchema = {
+  params: z.object({
+    lotId: z.string().min(1, 'Lot ID is required'),
+  }),
+  body: z.object({
+    collector_id: z.coerce.number().int().positive().optional(),
+    reason: z.string().max(500, 'Reason must not exceed 500 characters').optional(),
+  }).optional(),
+};
+

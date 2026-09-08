@@ -1,9 +1,14 @@
-import { z } from 'zod';
+﻿import { z } from 'zod';
 
-const materialCategory = z.enum([
-  'PCB', 'Battery', 'Cable', 'Motor/Magnet Assembly',
-  'LCD Panel', 'CRT', 'Mixed Plastic',
-]);
+export const VALID_MATERIAL_CATEGORIES = [
+  'PCB', 'Battery', 'Cable',
+  'Motor', 'Motor/Magnet Assembly', 'Motors',
+  'LCD', 'LCD Panel', 'LCD Panels',
+  'CRT', 'CRTs',
+  'Plastic', 'Mixed Plastic', 'Plastics', 'Mixed Plastics',
+];
+
+const materialCategory = z.enum(VALID_MATERIAL_CATEGORIES);
 
 export const bulkUpsertPricesSchema = {
   body: z.object({

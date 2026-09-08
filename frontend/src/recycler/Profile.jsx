@@ -17,18 +17,51 @@ export default function RecyclerProfile() {
   const [success, setSuccess] = useState('');
   const [editing, setEditing] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
+  const [avatarFile, setAvatarFile] = useState(null);
   const recyclerId = resolveRecyclerId();
+
+  function fileToDataUrl(file, maxDim = 640, quality = 0.8) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onerror = () => resolve(null);
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => resolve(reader.result);
+        img.onload = () => {
+          try {
+            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          } catch {
+            resolve(reader.result);
+          }
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
 
   function handleImageChange(e) {
     const file = e.target.files[0];
     if (file) {
+      setAvatarFile(file);
       setAvatarPreview(URL.createObjectURL(file));
     }
   }
 
   useEffect(() => {
     getRecycler(recyclerId)
-      .then(r => { setRecycler(r.data); setForm(r.data); })
+      .then(r => {
+        setRecycler(r.data);
+        setForm(r.data);
+        if (r.data?.profile_image) {
+          setAvatarPreview(r.data.profile_image);
+        }
+      })
       .catch(() => setError(t('recyclerDash.profileError')))
       .finally(() => setLoading(false));
   }, []);
@@ -50,17 +83,30 @@ export default function RecyclerProfile() {
     setError('');
     setSuccess('');
     try {
+      let profile_image = form.profile_image || recycler?.profile_image;
+      if (avatarFile) {
+        const dataUrl = await fileToDataUrl(avatarFile);
+        if (dataUrl) {
+          profile_image = dataUrl;
+        }
+      }
+
       const payload = {
-        name: form.name,
-        facility_location: form.facility_location,
+        name: form.name ? String(form.name) : undefined,
+        facility_location: form.facility_location ? String(form.facility_location) : undefined,
         materials_accepted: form.materials_accepted,
-        service_area: form.service_area,
-        contact_details: form.contact_details ?? form.contact,
+        service_area: form.service_area ? String(form.service_area) : undefined,
+        contact_details: form.contact_details != null ? String(form.contact_details) : (form.contact != null ? String(form.contact) : ''),
         pickup_availability: form.pickup_availability,
+        ...(profile_image ? { profile_image } : {}),
       };
       const r = await updateRecycler(recyclerId, payload);
       setRecycler(r.data);
       setForm(r.data);
+      if (r.data?.profile_image) {
+        setAvatarPreview(r.data.profile_image);
+      }
+      setAvatarFile(null);
       setSuccess(t('recyclerDash.profileUpdated'));
       setEditing(false);
     } catch (err) {
@@ -72,6 +118,8 @@ export default function RecyclerProfile() {
 
   function handleCancel() {
     setForm(recycler);
+    setAvatarFile(null);
+    setAvatarPreview(recycler?.profile_image || null);
     setEditing(false);
     setError('');
   }
@@ -88,7 +136,9 @@ export default function RecyclerProfile() {
               className="profile-avatar" 
               aria-hidden="true"
               style={avatarPreview ? { backgroundImage: `url(${avatarPreview})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
-            ></div>
+            >
+              {!avatarPreview && (recycler?.name ? recycler.name.charAt(0).toUpperCase() : '🏭')}
+            </div>
             {editing && (
               <label className="btn btn-ghost btn-sm" style={{ cursor: 'pointer' }}>
                 <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageChange} />

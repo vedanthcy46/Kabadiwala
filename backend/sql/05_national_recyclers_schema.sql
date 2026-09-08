@@ -16,8 +16,14 @@ CREATE TABLE national_recyclers_verified (
     installed_capacity_mta NUMERIC(12,2),
     status VARCHAR(30) DEFAULT 'Authorized',
     source TEXT NOT NULL,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    matched_geographic_hub TEXT,
+    coordinate_precision TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_national_recyclers_state ON national_recyclers_verified(state);
 CREATE INDEX idx_national_recyclers_name ON national_recyclers_verified(name);
+CREATE INDEX idx_national_recyclers_coords ON national_recyclers_verified(latitude, longitude);
+

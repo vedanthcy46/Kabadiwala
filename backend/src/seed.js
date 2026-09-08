@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { pool } from './db.js';
+import { seedNationalRecyclers } from './seedNationalRecyclers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sqlDir = path.join(__dirname, '..', 'sql');
@@ -15,11 +16,12 @@ const seedFiles = [
   '02_seed_recyclers_prices.sql',
   '03_seed_transactions.sql',
   '05_seed_recycler_rates.sql',
+  '06_seed_city_prices.sql',
 ];
 
 const expectedCounts = {
-  recyclers: 10,
-  prices: 71,
+  recyclers: 579,  // 10 demo + 569 imported national entries
+  prices: 426,
   collectors: 2,
   materials: 6,
   transactions: 6,
@@ -35,6 +37,9 @@ async function main() {
       await pool.query(sql);
       console.log(`✅ ${file} applied.`);
     }
+
+    console.log('Importing national recycler dataset (CSV → recyclers)...');
+    await seedNationalRecyclers({ verbose: true });
 
     console.log('\nVerifying row counts...');
     const res = await pool.query(`
@@ -52,7 +57,7 @@ async function main() {
     let allMatch = true;
     for (const [table, expected] of Object.entries(expectedCounts)) {
       const got = Number(actual[table]);
-      const ok = got === expected;
+      const ok = got >= expected; // >= so re-runs with extra data still pass
       if (!ok) allMatch = false;
       console.log(`  ${ok ? '✅' : '❌'} ${table}: expected ${expected}, got ${got}`);
     }

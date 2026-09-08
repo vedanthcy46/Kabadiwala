@@ -943,7 +943,14 @@ export default function LotDetail() {
                   )}
 
                   {!payChecking && !payAnomaly?.is_anomalous && payPrice && Number(payPrice) > 0 && (
-                    <p className="anomaly-clear">{t('lotDetail.payCheckedOk')}</p>
+                    <div style={{ margin: 'var(--space-2) 0' }}>
+                      <p className="anomaly-clear" style={{ margin: 0 }}>{t('lotDetail.payCheckedOk')}</p>
+                      {payAnomaly?.quote_status?.type === 'proportional_weight_adjustment' && (
+                        <p className="text-xs text-muted" style={{ margin: '4px 0 0 0', lineHeight: 1.4 }}>
+                          ℹ️ {payAnomaly.quote_status.message}
+                        </p>
+                      )}
+                    </div>
                   )}
 
                   <fieldset className="pay-methods" aria-label={t('lotDetail.payMethod')}>

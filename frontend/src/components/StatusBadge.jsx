@@ -28,6 +28,7 @@ const STATUS_VISUAL = {
   authorized:           { bg: 'var(--status-confirmed-bg)',     fg: 'var(--status-confirmed)',     icon: '' },
   unauthorized:         { bg: 'var(--color-destructive-light)', fg: 'var(--color-destructive)',    icon: '' },
   in_progress:          { bg: 'var(--status-in-progress-bg)',   fg: 'var(--status-in-progress)',   icon: '↻' },
+  cancelled:            { bg: 'rgba(239, 68, 68, 0.15)',        fg: '#ef4444',                     icon: '⊘' },
   default:              { bg: 'var(--color-muted)',             fg: 'var(--color-text-muted)',     icon: '?' },
 };
 
@@ -49,6 +50,7 @@ const STATUS_LABEL_KEYS = {
   authorized:           'recyclerProfile.authorizedYes',
   unauthorized:         'recyclerProfile.authorizedNo',
   in_progress:          'status.initiated',
+  cancelled:            'status.cancelled',
   default:              'common.noData',
 };
 
