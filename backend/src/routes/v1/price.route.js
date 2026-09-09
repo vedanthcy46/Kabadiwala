@@ -12,6 +12,11 @@ router.get(
 );
 
 router.get(
+  '/analytics',
+  priceController.getPriceAnalytics
+);
+
+router.get(
   '/market-pulse',
   priceController.getMarketPulse
 );

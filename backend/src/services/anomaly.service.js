@@ -235,7 +235,13 @@ export const getAnomalies = async ({ category, page = 1, limit = 20 }) => {
        FROM transactions
        WHERE final_price IS NOT NULL AND quantity_weight_kg > 0
        GROUP BY material_category
-       HAVING COUNT(*) >= 5
+     ),
+     latest_prices AS (
+       SELECT DISTINCT ON (material_category)
+         material_category, buying_price, market_range_low, market_range_high
+       FROM prices
+       WHERE recycler_id IS NULL
+       ORDER BY material_category, price_date DESC
      ),
      flagged AS (
        SELECT 
@@ -243,30 +249,37 @@ export const getAnomalies = async ({ category, page = 1, limit = 20 }) => {
          t.quoted_price, t.final_price, t.recycler_id, t.txn_datetime,
          r.name AS recycler_name,
          ROUND((t.final_price / NULLIF(t.quantity_weight_kg, 0))::numeric, 2) AS unit_price,
-         ROUND(cs.avg_unit_price::numeric, 2) AS avg_unit_price,
+         ROUND(COALESCE(cs.avg_unit_price, lp.buying_price, 0)::numeric, 2) AS avg_unit_price,
          ROUND(cs.stddev_unit_price::numeric, 2) AS stddev_unit_price,
          CASE 
-           WHEN cs.stddev_unit_price > 0 THEN 
+           WHEN cs.stddev_unit_price > 0 AND cs.sample_count >= 5 THEN 
              ROUND(((t.final_price / NULLIF(t.quantity_weight_kg, 0)) - cs.avg_unit_price) / cs.stddev_unit_price, 2)
            ELSE NULL
          END AS z_score,
          CASE
-           WHEN cs.stddev_unit_price > 0 AND 
+           WHEN cs.stddev_unit_price > 0 AND cs.sample_count >= 5 AND 
                 ABS((t.final_price / NULLIF(t.quantity_weight_kg, 0)) - cs.avg_unit_price) / cs.stddev_unit_price > 2
              THEN 'high'
-           WHEN cs.stddev_unit_price > 0 AND 
+           WHEN cs.stddev_unit_price > 0 AND cs.sample_count >= 5 AND 
                 ABS((t.final_price / NULLIF(t.quantity_weight_kg, 0)) - cs.avg_unit_price) / cs.stddev_unit_price > 1.5
+             THEN 'medium'
+           WHEN lp.market_range_low IS NOT NULL AND (t.final_price / NULLIF(t.quantity_weight_kg, 0)) < lp.market_range_low
+             THEN 'high'
+           WHEN lp.market_range_high IS NOT NULL AND (t.final_price / NULLIF(t.quantity_weight_kg, 0)) > (lp.market_range_high * 1.5)
+             THEN 'medium'
+           WHEN t.quoted_price IS NOT NULL AND (t.final_price / NULLIF(t.quantity_weight_kg, 0)) < ((t.quoted_price / NULLIF(t.quantity_weight_kg, 0)) * 0.95)
              THEN 'medium'
            ELSE 'normal'
          END AS severity
        FROM transactions t
        LEFT JOIN category_stats cs ON t.material_category = cs.material_category
+       LEFT JOIN latest_prices lp ON t.material_category = lp.material_category
        LEFT JOIN recyclers r ON t.recycler_id = r.id
        ${whereClause}
      )
      SELECT * FROM flagged
      WHERE severity IN ('high', 'medium')
-     ORDER BY ABS(z_score) DESC NULLS LAST
+     ORDER BY ABS(z_score) DESC NULLS LAST, txn_datetime DESC
      LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
     [...params, limit, offset]
   );

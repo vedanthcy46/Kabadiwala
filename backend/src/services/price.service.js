@@ -45,3 +45,5 @@ export const getPriceTrends = async (category, location, days = 30) => {
   
   return result.rows;
 };
+
+export { getPriceAnalytics } from './priceObservation.service.js';

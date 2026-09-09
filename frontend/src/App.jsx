@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { I18nProvider } from './i18n/I18nProvider';
 import { Navbar } from './components/Navbar';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { ImageLightboxModal } from './components/ImageLightboxModal';
 import { initSyncManager } from './services/offline/syncManager';
 import { getSession } from './services/auth';
 
@@ -125,6 +126,7 @@ function AppInner() {
       </main>
 
       {!isLandingPage && <OfflineIndicator />}
+      <ImageLightboxModal />
     </div>
   );
 }

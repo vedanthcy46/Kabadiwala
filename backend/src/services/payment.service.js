@@ -1,5 +1,6 @@
 import { query } from '../db.js';
 import { ApiError } from '../utils/ApiError.js';
+import { updateObservationStatus } from './priceObservation.service.js';
 
 // ── Internal event helper ─────────────────────────────────────────────────────
 // Mirrors the same fire-and-forget pattern used in handover.service.js.
@@ -87,6 +88,16 @@ export const updatePaymentStatus = async (lotId, data) => {
       payment_method: payment_method ?? updated.payment_method ?? 'cash',
       collector_id: updated.collector_id ?? null,
     });
+
+    // Update accepted observation to COMPLETED
+    const finalAmount = final_price ?? updated.final_price ?? null;
+    const weight = updated.quantity_weight_kg ? Number(updated.quantity_weight_kg) : null;
+    const finalRate = (finalAmount && weight && weight > 0) ? Math.round((Number(finalAmount) / weight) * 100) / 100 : null;
+
+    await updateObservationStatus({ lot_id: lotId }, 'COMPLETED', {
+      final_rate: finalRate,
+      final_sale_value: finalAmount ? Number(finalAmount) : null,
+    }).catch(() => {});
   }
 
   return updated;

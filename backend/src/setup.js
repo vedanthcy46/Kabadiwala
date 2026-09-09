@@ -24,6 +24,7 @@ const MIGRATIONS = [
   { file: '08_ai_governance.sql',            label: 'AI dataset governance views' },
   { file: '05_national_recyclers_schema.sql',label: 'National recyclers reference table' },
   { file: '09_lot_cancellation.sql',         label: 'Lot cancellation & audit fields' },
+  { file: '10_price_observations.sql',       label: 'Price observations dataset for recycler quote analytics' },
 ];
 
 // ── Seed files — run in dependency order ─────────────────────────────────────

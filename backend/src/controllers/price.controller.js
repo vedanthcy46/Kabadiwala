@@ -10,9 +10,31 @@ export const getPriceTrends = async (req, res) => {
     days
   );
 
+  const analytics = await priceService.getPriceAnalytics(
+    category,
+    location,
+    days
+  );
+
   res.status(200).json({
     success: true,
     data: trends,
+    analytics,
+  });
+};
+
+export const getPriceAnalytics = async (req, res) => {
+  const { category, location, days } = req.query;
+
+  const analytics = await priceService.getPriceAnalytics(
+    category,
+    location,
+    days
+  );
+
+  res.status(200).json({
+    success: true,
+    data: analytics,
   });
 };
 

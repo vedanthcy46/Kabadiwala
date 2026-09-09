@@ -133,11 +133,20 @@ export default function RecyclerProfile() {
         <div className="profile-header">
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)' }}>
             <div 
-              className="profile-avatar" 
-              aria-hidden="true"
-              style={avatarPreview ? { backgroundImage: `url(${avatarPreview})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
+              className="profile-avatar"
+              title={avatarPreview ? `${recycler?.name || 'Recycler'} Profile Picture (Click to maximize)` : undefined}
             >
-              {!avatarPreview && (recycler?.name ? recycler.name.charAt(0).toUpperCase() : '🏭')}
+              {avatarPreview ? (
+                <img
+                  src={avatarPreview}
+                  alt={`${recycler?.name || 'Recycler'} Profile Picture`}
+                  className="profile-avatar__img"
+                />
+              ) : (
+                <span aria-hidden="true">
+                  {recycler?.name ? recycler.name.charAt(0).toUpperCase() : '🏭'}
+                </span>
+              )}
             </div>
             {editing && (
               <label className="btn btn-ghost btn-sm" style={{ cursor: 'pointer' }}>

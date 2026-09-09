@@ -42,8 +42,28 @@ body {
 a { color: var(--color-primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-/* ── Images ── */
+/* ── Images & Maximizable Elements ── */
 img, video, canvas, svg { max-width: 100%; display: block; }
+
+img:not([data-no-zoom="true"]):not(.no-zoom):not(.leaflet-marker-icon):not(.leaflet-tile):not(.leaflet-image-layer):not([class*="leaflet"]):not([class*="mapbox"]),
+.lot-qr,
+.lot-qr__code {
+  cursor: zoom-in;
+  transition: transform var(--transition-fast, 0.15s ease), filter var(--transition-fast, 0.15s ease);
+}
+
+img:not([data-no-zoom="true"]):not(.no-zoom):not(.leaflet-marker-icon):not(.leaflet-tile):not(.leaflet-image-layer):not([class*="leaflet"]):not([class*="mapbox"]):hover {
+  filter: brightness(1.05);
+}
+
+/* Map marker icons & map tiles resets */
+.leaflet-container img,
+.leaflet-marker-icon,
+.leaflet-tile,
+.mapboxgl-map img {
+  cursor: pointer !important;
+  filter: none !important;
+}
 
 /* ── Button Reset ── */
 button {

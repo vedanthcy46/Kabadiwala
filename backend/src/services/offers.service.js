@@ -1,16 +1,17 @@
 import { query } from '../db.js';
 import { ApiError } from '../utils/ApiError.js';
 import { resolvePricingLocation } from './valuation.service.js';
+import { recordPriceObservation, updateObservationStatus } from './priceObservation.service.js';
 
 /**
  * Dynamically syncs a recycler's offered quote into the live prices board
  * so that both the Recycler Rate Board and the City Price Trend update in real time.
  */
-export const syncOfferPriceToBoard = async ({ recycler_id, lot_id, offered_price }) => {
+export const syncOfferPriceToBoard = async ({ recycler_id, lot_id, offered_price, offer_id }) => {
   if (!recycler_id || !lot_id || !offered_price || Number(offered_price) <= 0) return;
 
   const lotRes = await query(
-    `SELECT m.category, m.approx_weight_kg, m.collection_lat, m.collection_lng, 
+    `SELECT m.category, m.sub_category, m.collector_id, m.approx_weight_kg, m.collection_lat, m.collection_lng, 
             c.operating_location, c.latitude AS collector_lat, c.longitude AS collector_lng, 
             r.facility_location, r.latitude AS recycler_lat, r.longitude AS recycler_lng
      FROM materials m
@@ -31,6 +32,23 @@ export const syncOfferPriceToBoard = async ({ recycler_id, lot_id, offered_price
   const resolvedLoc = resolvePricingLocation(locStr, lat, lng);
   const category = lot.category;
   const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Record observation in price_observations dataset
+  await recordPriceObservation({
+    material_category: category,
+    sub_category: lot.sub_category,
+    lot_id,
+    offer_id,
+    recycler_id,
+    collector_id: lot.collector_id,
+    location: resolvedLoc,
+    latitude: lat,
+    longitude: lng,
+    quantity_kg: weight,
+    quoted_rate: perKgRate,
+    quote_status: 'QUOTED',
+    source: 'RECYCLER_OFFER',
+  }).catch((err) => console.error('[priceObservation] Failed to record observation:', err.message));
 
   // Categories to update (both canonical and alias)
   const categoriesToUpdate = [category];
@@ -63,7 +81,24 @@ export const syncOfferPriceToBoard = async ({ recycler_id, lot_id, offered_price
       ]
     );
 
-    // 2. Dynamically update today's benchmark index (recycler_id IS NULL)
+    // 2. Outlier-validated dynamic update to today's benchmark index (recycler_id IS NULL)
+    const existingBenchRes = await query(
+      `SELECT buying_price FROM prices 
+       WHERE material_category = $1 AND location = $2 AND price_date = $3 AND recycler_id IS NULL LIMIT 1`,
+      [cat, resolvedLoc, todayStr]
+    );
+
+    let effectiveQuote = perKgRate;
+    if (existingBenchRes.rows.length > 0 && existingBenchRes.rows[0].buying_price) {
+      const currentBench = Number(existingBenchRes.rows[0].buying_price);
+      // Outlier protection: If quote is an extreme anomaly (>2.2x or <0.35x), clamp weight to preserve benchmark signal
+      if (perKgRate > currentBench * 2.2) {
+        effectiveQuote = Math.round((currentBench * 1.35) * 100) / 100;
+      } else if (perKgRate < currentBench * 0.35) {
+        effectiveQuote = Math.round((currentBench * 0.65) * 100) / 100;
+      }
+    }
+
     await query(
       `INSERT INTO prices 
          (material_category, location, price_date, buying_price, quoted_price, unit, recycler_id, market_range_low, market_range_high)
@@ -78,10 +113,10 @@ export const syncOfferPriceToBoard = async ({ recycler_id, lot_id, offered_price
         cat,
         resolvedLoc,
         todayStr,
-        perKgRate,
-        perKgRate,
-        Math.round(perKgRate * 0.85 * 100) / 100,
-        Math.round(perKgRate * 1.15 * 100) / 100,
+        effectiveQuote,
+        effectiveQuote,
+        Math.round(effectiveQuote * 0.85 * 100) / 100,
+        Math.round(effectiveQuote * 1.15 * 100) / 100,
       ]
     );
   }
@@ -226,7 +261,7 @@ export const sendOffer = async (data) => {
       offered_price,
       recycler_name: recycler.name,
     });
-    await syncOfferPriceToBoard({ recycler_id, lot_id, offered_price }).catch((err) =>
+    await syncOfferPriceToBoard({ recycler_id, lot_id, offered_price, offer_id: updated.id }).catch((err) =>
       console.error('[offers] Failed to sync offer price to board:', err.message)
     );
     return updated;
@@ -245,7 +280,7 @@ export const sendOffer = async (data) => {
     offered_price,
     recycler_name: recycler.name,
   });
-  await syncOfferPriceToBoard({ recycler_id, lot_id, offered_price }).catch((err) =>
+  await syncOfferPriceToBoard({ recycler_id, lot_id, offered_price, offer_id: created.id }).catch((err) =>
     console.error('[offers] Failed to sync offer price to board:', err.message)
   );
   return created;
@@ -291,6 +326,7 @@ export const respondToOffer = async (offerId, data) => {
     recycler_id: offer.recycler_id,
     lot_id: offer.lot_id,
     offered_price: data.offered_price,
+    offer_id: offerId,
   }).catch((err) =>
     console.error('[offers] Failed to sync offer price to board:', err.message)
   );
@@ -325,6 +361,10 @@ export const acceptOffer = async (offerId) => {
     `UPDATE offers SET offer_status = 'accepted', responded_at = NOW() WHERE id = $1 RETURNING *`,
     [offerId]
   );
+
+  // Update observation statuses: winning offer -> ACCEPTED, other offers -> REJECTED
+  await updateObservationStatus({ lot_id: offer.lot_id, offer_id: offerId }, 'ACCEPTED').catch(() => {});
+  await updateObservationStatus({ lot_id: offer.lot_id, not_offer_id: offerId }, 'REJECTED').catch(() => {});
 
   // Bind the transaction to the winning recycler at the agreed price
   const txnResult = await query(
@@ -370,6 +410,8 @@ export const rejectOffer = async (offerId) => {
     [offerId]
   );
 
+  await updateObservationStatus({ offer_id: offerId }, 'REJECTED').catch(() => {});
+
   return result.rows[0];
 };
 
@@ -401,23 +443,35 @@ export const getAvailableLots = async (recyclerId) => {
   if (recyclerResult.rows.length === 0) {
     throw new ApiError(404, 'Recycler not found');
   }
-  const materials = Array.isArray(recyclerResult.rows[0].materials_accepted)
-    ? recyclerResult.rows[0].materials_accepted
+  const recycler = recyclerResult.rows[0];
+  const accepted = Array.isArray(recycler.materials_accepted)
+    ? recycler.materials_accepted
     : [];
+
+  // Expand category aliases so all matching materials are covered
+  const expandedMaterials = [...accepted];
+  for (const cat of accepted) {
+    if ((cat === 'Plastic' || cat === 'Plastics') && !expandedMaterials.includes('Mixed Plastic')) expandedMaterials.push('Mixed Plastic');
+    if (cat === 'Mixed Plastic' && !expandedMaterials.includes('Plastic')) expandedMaterials.push('Plastic');
+    if ((cat === 'Motor' || cat === 'Motors') && !expandedMaterials.includes('Motor/Magnet Assembly')) expandedMaterials.push('Motor/Magnet Assembly');
+    if (cat === 'Motor/Magnet Assembly' && !expandedMaterials.includes('Motor')) expandedMaterials.push('Motor');
+    if ((cat === 'LCD' || cat === 'LCDs') && !expandedMaterials.includes('LCD Panel')) expandedMaterials.push('LCD Panel');
+    if (cat === 'LCD Panel' && !expandedMaterials.includes('LCD')) expandedMaterials.push('LCD');
+  }
 
   const result = await query(
     `SELECT m.lot_id, m.category, m.approx_weight_kg, m.description, m.created_at,
             t.quoted_price AS market_estimate, t.collection_location,
-            c.name AS collector_name
+            c.name AS collector_name, c.operating_location
      FROM materials m
      JOIN transactions t ON m.lot_id = t.lot_id
      LEFT JOIN collectors c ON m.collector_id = c.id
-     WHERE t.transaction_status = 'quoted'
+     WHERE t.transaction_status IN ('quoted', 'matched')
        AND NOT COALESCE(m.is_cancelled, false)
        AND m.category = ANY($1::text[])
        AND NOT EXISTS (
          SELECT 1 FROM offers o
-         WHERE o.lot_id = m.lot_id AND o.offer_status IN ('requested', 'offered')
+         WHERE o.lot_id = m.lot_id AND o.recycler_id = $2 AND o.offer_status IN ('requested', 'offered')
        )
        AND NOT EXISTS (
          SELECT 1 FROM offers o2
@@ -425,8 +479,20 @@ export const getAvailableLots = async (recyclerId) => {
        )
      ORDER BY m.created_at DESC
      LIMIT 50`,
-    [materials]
+    [expandedMaterials, recyclerId]
   );
 
-  return result.rows;
+  const recyclerLocStr = recycler.facility_location || recycler.service_area || '';
+  if (!recyclerLocStr) {
+    return result.rows;
+  }
+
+  const recyclerCity = resolvePricingLocation(recyclerLocStr);
+
+  return result.rows.filter((lot) => {
+    const lotLoc = lot.collection_location || lot.operating_location || '';
+    if (!lotLoc) return true;
+    const lotCity = resolvePricingLocation(lotLoc);
+    return lotCity.toLowerCase() === recyclerCity.toLowerCase();
+  });
 };

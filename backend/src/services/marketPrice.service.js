@@ -168,17 +168,9 @@ export const seedDynamicNationalPrices = async (days = 90) => {
 
         const conflictClause = isBenchmark
           ? `ON CONFLICT (material_category, location, price_date) WHERE recycler_id IS NULL
-             DO UPDATE SET 
-               buying_price = EXCLUDED.buying_price,
-               quoted_price = EXCLUDED.quoted_price,
-               market_range_low = EXCLUDED.market_range_low,
-               market_range_high = EXCLUDED.market_range_high`
+             DO NOTHING`
           : `ON CONFLICT ON CONSTRAINT prices_category_location_date_recycler_unique
-             DO UPDATE SET 
-               buying_price = EXCLUDED.buying_price,
-               quoted_price = EXCLUDED.quoted_price,
-               market_range_low = EXCLUDED.market_range_low,
-               market_range_high = EXCLUDED.market_range_high`;
+             DO NOTHING`;
 
         const sql = `
           INSERT INTO prices 

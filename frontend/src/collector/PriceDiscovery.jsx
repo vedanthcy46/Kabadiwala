@@ -84,6 +84,7 @@ export default function PriceDiscovery() {
   const [days, setDays] = useState(90);
 
   const [trends, setTrends] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [rateRows, setRateRows] = useState([]);
   const [recyclerSearch, setRecyclerSearch] = useState('');
   const [priceCards, setPriceCards] = useState({});
@@ -137,7 +138,10 @@ export default function PriceDiscovery() {
     setLoadingTrend(true);
     setError('');
     getPriceTrends({ category, location, days })
-      .then(r => setTrends(Array.isArray(r.data) ? r.data : []))
+      .then(r => {
+        setTrends(Array.isArray(r.data) ? r.data : []);
+        if (r.analytics) setAnalytics(r.analytics);
+      })
       .catch(() => { setTrends([]); setError(t('prices.loadError')); })
       .finally(() => setLoadingTrend(false));
   }, [category, location, days, t]);
@@ -354,14 +358,10 @@ export default function PriceDiscovery() {
           <p className="section-subtitle">{t('priceDiscovery.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-          <button
-            className="btn btn-outline"
-            onClick={handleSyncLiveMarket}
-            disabled={syncingPrices}
-            title="Fetch latest e-waste commodity benchmark rates across India"
-          >
-            {syncingPrices ? <><LoadingSpinner size="sm" /> Syncing…</> : '⚡ Sync Live Market Rates'}
-          </button>
+          <span className="status-badge status-badge--success" style={{ fontSize: 'var(--text-xs)', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <span className="p2-live-pulse" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22C55E', display: 'inline-block' }}></span>
+            ⚡ Live Auto-Synced Rates
+          </span>
         </div>
       </div>
 
@@ -545,6 +545,33 @@ export default function PriceDiscovery() {
           </h2>
           <span className="text-sm text-muted">{days} {t('prices.days')} · {location}</span>
         </div>
+
+        {analytics && !loadingTrend && (
+          <div className="p2-stat-chips" style={{ marginBottom: 'var(--space-4)', background: 'rgba(124, 58, 237, 0.04)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px dashed rgba(124, 58, 237, 0.3)' }}>
+            <div className="p2-stat-chip p2-stat-chip--accent" title="Trend benchmark signal calculated via exponential moving average">
+              <span className="p2-stat-chip__label">Market Benchmark</span>
+              <span className="p2-stat-chip__value">{fmt(analytics.benchmark_rate || stats?.latest)}</span>
+            </div>
+            <div className="p2-stat-chip">
+              <span className="p2-stat-chip__label">Quoted Market Avg</span>
+              <span className="p2-stat-chip__value">{fmt(analytics.recycler_quote_avg)}</span>
+            </div>
+            <div className="p2-stat-chip">
+              <span className="p2-stat-chip__label">Median Quote</span>
+              <span className="p2-stat-chip__value">{fmt(analytics.recycler_quote_median)}</span>
+            </div>
+            <div className="p2-stat-chip">
+              <span className="p2-stat-chip__label">Quote Observations</span>
+              <span className="p2-stat-chip__value">{analytics.quote_observations_count}</span>
+            </div>
+            {analytics.completed_transaction_avg ? (
+              <div className="p2-stat-chip p2-stat-chip--up" title="Average realized payout from completed transactions">
+                <span className="p2-stat-chip__label">Realized Sale Avg</span>
+                <span className="p2-stat-chip__value">{fmt(analytics.completed_transaction_avg)}</span>
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {stats && !loadingTrend && (
           <div className="p2-stat-chips">
