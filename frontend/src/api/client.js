@@ -425,6 +425,13 @@ export const getPriceSources = () => request('/admin/price-sources');
 export const getAdminLots = () => request('/admin/lots');
 export const getAdminAuditEvents = () => request('/admin/audit-events');
 
+// Dashboard chart analytics — material mix, revenue velocity, recycler auth status
+export const getAdminAnalytics = () => request('/admin/analytics');
+
+// Geospatial heatmap data — recycler facilities, density, state summaries
+export const getAdminHeatmap = () => request('/admin/heatmap');
+
+
 // ── Earnings summary ─────────────────────────────────────────────────────────
 
 /**

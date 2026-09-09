@@ -33,4 +33,10 @@ router.get('/price-sources', adminController.getPriceSources);
 router.get('/lots', adminController.getLotRegister);
 router.get('/audit-events', adminController.getAuditEvents);
 
+// Dashboard chart data — material mix, revenue trends, recycler network status
+router.get('/analytics', adminController.getAnalytics);
+
+// Geospatial heatmap data — recyclers, coordinates, authorization, density
+router.get('/heatmap', adminController.getHeatmap);
+
 export default router;

@@ -33,3 +33,13 @@ export const getAuditEvents = async (req, res) => {
   const data = await adminService.listAuditEvents();
   res.status(200).json({ success: true, count: data.length, data });
 };
+
+export const getAnalytics = async (req, res) => {
+  const data = await adminService.adminAnalytics();
+  res.status(200).json({ success: true, data });
+};
+
+export const getHeatmap = async (req, res) => {
+  const data = await adminService.adminHeatmapData();
+  res.status(200).json({ success: true, data });
+};

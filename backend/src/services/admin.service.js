@@ -141,6 +141,58 @@ export const listLotRegister = async () => {
   return result.rows;
 };
 
+/**
+ * Analytics aggregation for the admin dashboard charts.
+ * Returns three datasets:
+ *   materialMix    — kg + lot count grouped by category
+ *   revenueTrends  — last 30 days of transaction velocity + GMV + payment split
+ *   recyclerStatus — recycler count grouped by authorization_status
+ */
+export const adminAnalytics = async () => {
+  const [materialRes, revenueRes, recyclerRes] = await Promise.all([
+    // ── 1. Material volume by category ──────────────────────────────────────
+    query(
+      `SELECT
+         category,
+         COUNT(*)::int                        AS lot_count,
+         COALESCE(SUM(approx_weight_kg), 0)   AS total_weight_kg,
+         COALESCE(SUM(estimated_value), 0)    AS total_estimated_value
+       FROM materials
+       GROUP BY category
+       ORDER BY total_weight_kg DESC`
+    ),
+    // ── 2. Daily transaction velocity + GMV + payment split (last 30 days) ──
+    query(
+      `SELECT
+         DATE(txn_datetime)::text             AS date,
+         COUNT(*)::int                        AS txn_count,
+         COALESCE(SUM(final_price), 0)        AS gmv,
+         COALESCE(SUM(CASE WHEN payment_method = 'cash'         THEN final_price ELSE 0 END), 0) AS cash_gmv,
+         COALESCE(SUM(CASE WHEN payment_method = 'upi'          THEN final_price ELSE 0 END), 0) AS upi_gmv,
+         COALESCE(SUM(CASE WHEN payment_method = 'bank_transfer' THEN final_price ELSE 0 END), 0) AS bank_gmv
+       FROM transactions
+       WHERE txn_datetime >= NOW() - INTERVAL '30 days'
+         AND final_price IS NOT NULL
+       GROUP BY DATE(txn_datetime)
+       ORDER BY date ASC`
+    ),
+    // ── 3. Recycler auth status breakdown ───────────────────────────────────
+    query(
+      `SELECT
+         authorization_status AS status,
+         COUNT(*)::int        AS count
+       FROM recyclers
+       GROUP BY authorization_status`
+    ),
+  ]);
+
+  return {
+    materialMix:    materialRes.rows,
+    revenueTrends:  revenueRes.rows,
+    recyclerStatus: recyclerRes.rows,
+  };
+};
+
 /** Recent append-only events expose the audit trail without editing evidence. */
 export const listAuditEvents = async () => {
   const result = await query(
@@ -153,4 +205,66 @@ export const listAuditEvents = async () => {
      LIMIT 100`
   );
   return result.rows;
+};
+
+/**
+ * Geospatial distribution of recyclers, authorization status, and transactions for location heatmap.
+ */
+export const adminHeatmapData = async () => {
+  const [pointsRes, regionalRes] = await Promise.all([
+    query(
+      `SELECT
+         r.id,
+         r.name,
+         r.facility_location,
+         r.latitude,
+         r.longitude,
+         r.authorization_status,
+         r.service_area,
+         r.materials_accepted,
+         COUNT(t.id)::int AS txn_count,
+         COALESCE(SUM(t.quantity_weight_kg), 0)::numeric AS total_kg
+       FROM recyclers r
+       LEFT JOIN transactions t ON t.recycler_id = r.id
+       WHERE r.latitude IS NOT NULL AND r.longitude IS NOT NULL
+       GROUP BY r.id, r.name, r.facility_location, r.latitude, r.longitude, r.authorization_status, r.service_area, r.materials_accepted
+       ORDER BY r.id ASC`
+    ),
+    query(
+      `SELECT
+         COALESCE(service_area, 'Other') AS state,
+         COUNT(*)::int AS recycler_count,
+         COUNT(*) FILTER (WHERE authorization_status = 'authorized')::int AS authorized_count,
+         COUNT(*) FILTER (WHERE authorization_status = 'pending')::int AS pending_count,
+         COUNT(*) FILTER (WHERE authorization_status = 'unauthorized')::int AS unauthorized_count
+       FROM recyclers
+       WHERE latitude IS NOT NULL
+       GROUP BY service_area
+       ORDER BY recycler_count DESC`
+    ),
+  ]);
+
+  const points = pointsRes.rows.map((row) => {
+    const base = row.authorization_status === 'authorized' ? 0.6 : (row.authorization_status === 'pending' ? 0.35 : 0.2);
+    const activityBonus = Math.min(0.4, (row.txn_count || 0) * 0.1);
+    return {
+      id: row.id,
+      name: row.name,
+      facilityLocation: row.facility_location,
+      lat: Number(row.latitude),
+      lng: Number(row.longitude),
+      status: row.authorization_status,
+      serviceArea: row.service_area,
+      materialsAccepted: row.materials_accepted,
+      txnCount: row.txn_count,
+      totalKg: Number(row.total_kg),
+      intensity: Math.min(1.0, +(base + activityBonus).toFixed(2)),
+    };
+  });
+
+  return {
+    totalPoints: points.length,
+    points,
+    regionalSummary: regionalRes.rows,
+  };
 };

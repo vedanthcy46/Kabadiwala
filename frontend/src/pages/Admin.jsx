@@ -1,7 +1,7 @@
 /** Admin panel — /admin
  *
  * Restricted-area view for the platform operator:
- *  - Overview (live counts + expiry alerts)
+ *  - Overview (live counts + expiry alerts + analytics charts)
  *  - Recycler verification queue (approve / reject authorization apps)
  *  - Price-source registry (where market data comes from)
  *
@@ -12,18 +12,127 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  Chart as ChartJS,
+  ArcElement, BarElement, LineElement, PointElement,
+  CategoryScale, LinearScale,
+  Tooltip, Legend, Filler,
+} from 'chart.js';
+import { Doughnut, Bar } from 'react-chartjs-2';
+import {
   adminLogin, getAdminSummary, getAllRecyclers,
   adminVerifyRecycler, getPriceSources, getAdminLots, getAdminAuditEvents,
   getAiDatasetSummary, getAiDatasetSamples, getAnomalies, getAiDatasetExportUrl,
+  getAdminAnalytics, getAdminHeatmap,
 } from '../api/client';
+import AdminHeatmap from '../admin/AdminHeatmap';
 import { getSession, saveSession, clearSession } from '../services/auth';
 import { StatusBadge } from '../components/StatusBadge';
 import { PageLoader, LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
 import './Admin.css';
 
+ChartJS.register(
+  ArcElement, BarElement, LineElement, PointElement,
+  CategoryScale, LinearScale,
+  Tooltip, Legend, Filler,
+);
+
 const TABS = ['overview', 'recyclers', 'lots', 'audit', 'anomalies', 'prices', 'dataset'];
 const TAB_FALLBACKS = { lots: 'Lot register', audit: 'Audit trail', anomalies: 'Anomalies', dataset: 'AI Dataset' };
+
+// ── Chart colour palette (matches design tokens) ─────────────────────────────
+const CATEGORY_COLORS = [
+  '#7C3AED', // purple  — PCBs
+  '#16A34A', // green   — Batteries
+  '#2563EB', // blue    — CRTs
+  '#D97706', // amber   — LCD panels
+  '#DB2777', // pink    — Cables
+  '#0891B2', // cyan    — Motors / Magnets
+  '#65A30D', // lime    — Mixed Plastics
+  '#9333EA', // violet  — other
+];
+
+const AUTH_COLORS = {
+  authorized:   '#16A34A',
+  pending:      '#D97706',
+  unauthorized: '#DC2626',
+};
+
+const CHART_FONT = { family: 'Inter, sans-serif', size: 12 };
+
+const DOUGHNUT_OPTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  cutout: '65%',
+  plugins: {
+    legend: { position: 'right', labels: { font: CHART_FONT, boxWidth: 12, padding: 14 } },
+    tooltip: {
+      callbacks: {
+        label: (ctx) => ` ${ctx.label}: ${Number(ctx.raw).toLocaleString('en-IN')} kg`,
+      },
+    },
+  },
+};
+
+const DOUGHNUT_AUTH_OPTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  cutout: '65%',
+  plugins: {
+    legend: { position: 'right', labels: { font: CHART_FONT, boxWidth: 12, padding: 14 } },
+    tooltip: {
+      callbacks: {
+        label: (ctx) => ` ${ctx.label}: ${ctx.raw} recyclers`,
+      },
+    },
+  },
+};
+
+const BAR_OPTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { position: 'top', labels: { font: CHART_FONT, boxWidth: 10, padding: 12 } },
+    tooltip: {
+      callbacks: {
+        label: (ctx) => {
+          if (ctx.dataset.yAxisID === 'y1') {
+            return ` GMV: ₹${Number(ctx.raw).toLocaleString('en-IN')}`;
+          }
+          return ` Transactions: ${ctx.raw}`;
+        },
+      },
+    },
+  },
+  scales: {
+    x: { grid: { display: false }, ticks: { font: { ...CHART_FONT, size: 10 }, maxTicksLimit: 10 } },
+    y: {
+      type: 'linear',
+      position: 'left',
+      title: { display: true, text: 'Transactions', font: CHART_FONT },
+      grid: { color: 'rgba(124,58,237,0.08)' },
+      ticks: { font: CHART_FONT },
+    },
+    y1: {
+      type: 'linear',
+      position: 'right',
+      title: { display: true, text: 'GMV (₹)', font: CHART_FONT },
+      grid: { drawOnChartArea: false },
+      ticks: {
+        font: CHART_FONT,
+        callback: (v) => `₹${Number(v).toLocaleString('en-IN')}`,
+      },
+    },
+  },
+};
+
+// Helper — short date label for chart X axis
+function shortDate(str) {
+  if (!str) return '';
+  const d = new Date(str);
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
 
 function fmtDate(d) {
   if (!d) return '—';
@@ -55,6 +164,8 @@ export default function Admin() {
   const [lots, setLots] = useState([]);
   const [auditEvents, setAuditEvents] = useState([]);
   const [anomalies, setAnomalies] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
+  const [heatmapData, setHeatmapData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
@@ -88,7 +199,7 @@ export default function Admin() {
     setLoading(true);
     setError('');
     try {
-      const [sumRes, recRes, priceRes, lotsRes, auditRes, aiSumRes, aiSampRes, anomalyRes] = await Promise.all([
+      const [sumRes, recRes, priceRes, lotsRes, auditRes, aiSumRes, aiSampRes, anomalyRes, analyticsRes, heatRes] = await Promise.all([
         getAdminSummary(),
         getAllRecyclers({ limit: 1000 }),
         getPriceSources(),
@@ -97,6 +208,8 @@ export default function Admin() {
         getAiDatasetSummary(),
         getAiDatasetSamples({ limit: 12 }),
         getAnomalies().catch(() => ({ anomalies: [] })),
+        getAdminAnalytics().catch(() => ({ data: null })),
+        getAdminHeatmap().catch(() => ({ data: null })),
       ]);
       setSummary(sumRes.data);
       setRecyclers(Array.isArray(recRes.data) ? recRes.data : []);
@@ -106,6 +219,8 @@ export default function Admin() {
       setAiSummary(aiSumRes.data);
       setAiSamples(Array.isArray(aiSampRes.data?.samples) ? aiSampRes.data.samples : []);
       setAnomalies(Array.isArray(anomalyRes.anomalies) ? anomalyRes.anomalies : (Array.isArray(anomalyRes.data?.anomalies) ? anomalyRes.data.anomalies : []));
+      setAnalytics(analyticsRes.data ?? null);
+      setHeatmapData(heatRes.data ?? null);
     } catch {
       setError(t('admin.loadError'));
     } finally {
@@ -287,6 +402,7 @@ export default function Admin() {
         <PageLoader />
       ) : tab === 'overview' ? (
         <div className="admin-overview animate-fade-in">
+          {/* KPI stat cards */}
           <div className="admin-stat-grid">
             <div className="admin-stat card">
               <span className="admin-stat__label">{t('admin.stat.collectors')}</span>
@@ -326,8 +442,189 @@ export default function Admin() {
             </div>
           </div>
 
+          {/* ── ANALYTICS CHARTS ──────────────────────────────────────── */}
+          <div className="admin-charts-row">
+
+            {/* Chart 1: Material Volume by Category (Donut) */}
+            <section className="admin-chart-card card animate-fade-in" aria-label="Material volume by category">
+              <div className="admin-chart-header">
+                <div>
+                  <h2 className="admin-chart-title">Material Volume by Category</h2>
+                  <p className="admin-chart-sub">Total kg collected across all 7 PS-mandated material streams</p>
+                </div>
+                {analytics?.materialMix && (
+                  <span className="admin-chart-badge">
+                    {analytics.materialMix.reduce((s, r) => s + Number(r.total_weight_kg || 0), 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })} kg total
+                  </span>
+                )}
+              </div>
+              <div className="admin-chart-canvas-wrap" style={{ height: 220 }}>
+                {analytics?.materialMix?.length > 0 ? (
+                  <Doughnut
+                    data={{
+                      labels: analytics.materialMix.map((r) => r.category),
+                      datasets: [{
+                        data: analytics.materialMix.map((r) => Number(r.total_weight_kg || 0)),
+                        backgroundColor: CATEGORY_COLORS.slice(0, analytics.materialMix.length),
+                        borderColor: '#fff',
+                        borderWidth: 2,
+                        hoverOffset: 6,
+                      }],
+                    }}
+                    options={DOUGHNUT_OPTS}
+                  />
+                ) : (
+                  <div className="admin-chart-empty">No material lots created yet — data will appear as collectors submit lots.</div>
+                )}
+              </div>
+              {analytics?.materialMix?.length > 0 && (
+                <div className="admin-chart-legend-pills">
+                  {analytics.materialMix.map((r, i) => (
+                    <span key={r.category} className="admin-legend-pill">
+                      <span className="admin-legend-dot" style={{ background: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
+                      {r.category}
+                      <strong>{r.lot_count} lots</strong>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Chart 3: Recycler Authorization Status (Donut) */}
+            <section className="admin-chart-card card animate-fade-in" aria-label="Recycler authorization breakdown">
+              <div className="admin-chart-header">
+                <div>
+                  <h2 className="admin-chart-title">Recycler Network Status</h2>
+                  <p className="admin-chart-sub">SPCB/CPCB authorization breakdown across registered facilities</p>
+                </div>
+                {analytics?.recyclerStatus && (
+                  <span className="admin-chart-badge" style={{ background: 'var(--color-success-light)', color: 'var(--color-success)' }}>
+                    {(analytics.recyclerStatus.find(r => r.status === 'authorized')?.count ?? 0)} authorized
+                  </span>
+                )}
+              </div>
+              <div className="admin-chart-canvas-wrap" style={{ height: 220 }}>
+                {analytics?.recyclerStatus?.length > 0 ? (
+                  <Doughnut
+                    data={{
+                      labels: analytics.recyclerStatus.map((r) => r.status.charAt(0).toUpperCase() + r.status.slice(1)),
+                      datasets: [{
+                        data: analytics.recyclerStatus.map((r) => Number(r.count)),
+                        backgroundColor: analytics.recyclerStatus.map((r) => AUTH_COLORS[r.status] ?? '#94A3B8'),
+                        borderColor: '#fff',
+                        borderWidth: 2,
+                        hoverOffset: 6,
+                      }],
+                    }}
+                    options={DOUGHNUT_AUTH_OPTS}
+                  />
+                ) : (
+                  <div className="admin-chart-empty">No recyclers registered yet.</div>
+                )}
+              </div>
+              {analytics?.recyclerStatus?.length > 0 && (
+                <div className="admin-chart-legend-pills">
+                  {analytics.recyclerStatus.map((r) => (
+                    <span key={r.status} className="admin-legend-pill">
+                      <span className="admin-legend-dot" style={{ background: AUTH_COLORS[r.status] ?? '#94A3B8' }} />
+                      {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                      <strong>{r.count}</strong>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          {/* Chart 2: Transaction Velocity + GMV Revenue Trend (Dual-Axis Bar+Line) */}
+          <section className="admin-chart-card admin-chart-card--wide card animate-fade-in" style={{ marginTop: 'var(--space-4)' }} aria-label="Transaction velocity and GMV trend">
+            <div className="admin-chart-header">
+              <div>
+                <h2 className="admin-chart-title">Transaction Velocity &amp; Revenue Trend (Last 30 Days)</h2>
+                <p className="admin-chart-sub">Daily lot handovers (bars, left axis) alongside total platform GMV in ₹ (line, right axis)</p>
+              </div>
+              {analytics?.revenueTrends?.length > 0 && (
+                <div className="admin-chart-badges-row">
+                  <span className="admin-chart-badge">
+                    ₹{analytics.revenueTrends.reduce((s, r) => s + Number(r.gmv || 0), 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })} total GMV
+                  </span>
+                  <span className="admin-chart-badge" style={{ background: 'var(--color-accent-light)', color: 'var(--color-accent)' }}>
+                    {analytics.revenueTrends.reduce((s, r) => s + Number(r.txn_count || 0), 0)} transactions
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="admin-chart-canvas-wrap" style={{ height: 280 }}>
+              {analytics?.revenueTrends?.length > 0 ? (
+                <Bar
+                  data={{
+                    labels: analytics.revenueTrends.map((r) => shortDate(r.date)),
+                    datasets: [
+                      {
+                        type: 'bar',
+                        label: 'Transactions',
+                        data: analytics.revenueTrends.map((r) => Number(r.txn_count)),
+                        backgroundColor: 'rgba(124, 58, 237, 0.22)',
+                        borderColor: '#7C3AED',
+                        borderWidth: 1.5,
+                        borderRadius: 4,
+                        yAxisID: 'y',
+                        order: 2,
+                      },
+                      {
+                        type: 'line',
+                        label: 'GMV (₹)',
+                        data: analytics.revenueTrends.map((r) => Number(r.gmv)),
+                        borderColor: '#16A34A',
+                        backgroundColor: 'rgba(22, 163, 74, 0.08)',
+                        borderWidth: 2.5,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#16A34A',
+                        tension: 0.4,
+                        fill: true,
+                        yAxisID: 'y1',
+                        order: 1,
+                      },
+                    ],
+                  }}
+                  options={BAR_OPTS}
+                />
+              ) : (
+                <div className="admin-chart-empty">No transactions in the last 30 days — chart will populate as handovers are completed.</div>
+              )}
+            </div>
+            {/* Payment Method Split */}
+            {analytics?.revenueTrends?.length > 0 && (() => {
+              const totalGmv  = analytics.revenueTrends.reduce((s, r) => s + Number(r.gmv || 0), 0);
+              const cashGmv   = analytics.revenueTrends.reduce((s, r) => s + Number(r.cash_gmv || 0), 0);
+              const upiGmv    = analytics.revenueTrends.reduce((s, r) => s + Number(r.upi_gmv || 0), 0);
+              const bankGmv   = analytics.revenueTrends.reduce((s, r) => s + Number(r.bank_gmv || 0), 0);
+              const pct = (v) => totalGmv > 0 ? Math.round((v / totalGmv) * 100) : 0;
+              return (
+                <div className="admin-payment-split">
+                  <span className="admin-payment-split__label">Payment method split:</span>
+                  <div className="admin-payment-split__bar">
+                    {cashGmv > 0  && <div className="admin-payment-split__seg admin-payment-split__seg--cash"  style={{ flex: cashGmv  }} title={`Cash ₹${cashGmv.toLocaleString('en-IN')}`} />}
+                    {upiGmv > 0   && <div className="admin-payment-split__seg admin-payment-split__seg--upi"   style={{ flex: upiGmv   }} title={`UPI ₹${upiGmv.toLocaleString('en-IN')}`} />}
+                    {bankGmv > 0  && <div className="admin-payment-split__seg admin-payment-split__seg--bank"  style={{ flex: bankGmv  }} title={`Bank ₹${bankGmv.toLocaleString('en-IN')}`} />}
+                    {(cashGmv + upiGmv + bankGmv) === 0 && <div style={{ flex: 1, background: 'var(--color-muted)', borderRadius: 4 }} />}
+                  </div>
+                  <div className="admin-payment-split__chips">
+                    <span className="admin-payment-chip admin-payment-chip--cash">Cash {pct(cashGmv)}%</span>
+                    <span className="admin-payment-chip admin-payment-chip--upi">UPI {pct(upiGmv)}%</span>
+                    <span className="admin-payment-chip admin-payment-chip--bank">Bank {pct(bankGmv)}%</span>
+                  </div>
+                </div>
+              );
+            })()}
+          </section>
+
+          {/* ── LOCATION HEATMAP ──────────────────────────────────────── */}
+          <AdminHeatmap heatmapData={heatmapData} loading={loading} />
+
+          {/* Expiring authorizations alert list */}
           {expiring.length > 0 && (
-            <section className="card animate-fade-in" style={{ marginTop: 'var(--space-6)' }}>
+            <section className="card animate-fade-in" style={{ marginTop: 'var(--space-4)' }}>
               <h2 className="detail-section-title">{t('admin.expiryTitle')}</h2>
               <ul className="quote-list">
                 {expiring.map((r) => (
