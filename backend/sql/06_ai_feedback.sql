@@ -17,12 +17,22 @@ CREATE TABLE IF NOT EXISTS ai_feedback (
     ai_features JSONB,
     -- What the human actually chose (NULL = accepted AI suggestion without change)
     human_category VARCHAR(50),
+    correction_reason TEXT,
+    reviewed_by VARCHAR(50),
+    reviewed_at TIMESTAMP,
     -- Whether the human accepted or corrected the AI
     outcome VARCHAR(20) NOT NULL DEFAULT 'pending'
-        CHECK (outcome IN ('accepted', 'corrected', 'dismissed', 'pending')),
+        CHECK (outcome IN ('accepted', 'corrected', 'dismissed', 'pending', 'rejected', 'review_required')),
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Schema migration safety for existing databases
+ALTER TABLE ai_feedback ADD COLUMN IF NOT EXISTS correction_reason TEXT;
+ALTER TABLE ai_feedback ADD COLUMN IF NOT EXISTS reviewed_by VARCHAR(50);
+ALTER TABLE ai_feedback ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;
+ALTER TABLE ai_feedback DROP CONSTRAINT IF EXISTS ai_feedback_outcome_check;
 
 CREATE INDEX IF NOT EXISTS idx_ai_feedback_category ON ai_feedback(ai_predicted_category);
 CREATE INDEX IF NOT EXISTS idx_ai_feedback_outcome  ON ai_feedback(outcome);
 CREATE INDEX IF NOT EXISTS idx_ai_feedback_lot      ON ai_feedback(lot_id);
+
