@@ -449,7 +449,7 @@ export default function LotDetail() {
               )}
             </section>
           )}
-          {/* Accepted quote — collector chose this recycler; waiting for handover */}
+          {/* Accepted quote — collector chose this recycler; contact details unlocked */}
           {acceptedOffer && (
             <section className="card animate-scale-in" aria-labelledby="accepted-heading">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
@@ -463,9 +463,50 @@ export default function LotDetail() {
                   price: fmtRupees(acceptedOffer.offered_price),
                 })}
               </div>
-              <p className="form-hint" style={{ marginTop: 'var(--space-3)' }}>
-                {t('quotes.acceptedBannerRecyclerDesc')}
-              </p>
+
+              {/* Unlocked Collector Contact Card */}
+              <div className="card" style={{ background: 'var(--color-surface-alt, #f8fafc)', padding: '16px', borderRadius: '10px', marginTop: '16px', border: '1px solid var(--color-success, #16a34a)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '600', color: 'var(--color-success, #16a34a)' }}>
+                    📞 Collector Contact & Pickup Coordination
+                  </h3>
+                  <span className="pill" style={{ background: 'var(--status-confirmed-bg)', color: 'var(--status-confirmed)', fontSize: '0.8rem' }}>
+                    ✅ Contact Unlocked
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '10px' }}>
+                  <div>
+                    <span className="detail-item__label" style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Collector Name</span>
+                    <p style={{ margin: '2px 0 0 0', fontWeight: '600' }}>{lotMeta?.collector_name || 'Registered Collector'}</p>
+                  </div>
+                  <div>
+                    <span className="detail-item__label" style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Collector Phone Number</span>
+                    <p style={{ margin: '2px 0 0 0', fontWeight: '600' }}>
+                      {lotMeta?.collector_phone ? (
+                        <a href={`tel:${lotMeta.collector_phone}`} className="btn btn-accent btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          📞 Call {lotMeta.collector_phone}
+                        </a>
+                      ) : (
+                        <span className="text-muted">Unlocked upon confirmation</span>
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="detail-item__label" style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Pickup Location</span>
+                    <p style={{ margin: '2px 0 0 0', fontWeight: '500' }}>
+                      {lotMeta?.exact_pickup_location || lotMeta?.collection_location || 'Bengaluru'}
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '12px', padding: '10px 12px', background: 'rgba(22, 163, 74, 0.08)', borderRadius: '6px', fontSize: '0.85rem' }}>
+                  <strong>💡 Suggested Pickup Script:</strong>
+                  <p style={{ margin: '4px 0 0 0', fontStyle: 'italic', color: 'var(--color-text-primary)' }}>
+                    “Hello, I am calling regarding Lot <strong>{lotId}</strong>. When can we schedule the pickup or handover?”
+                  </p>
+                </div>
+              </div>
             </section>
           )}
           {/* Accepted quote -> QR scan -> pickup. This is the explicit bridge

@@ -21,8 +21,8 @@ export const createRecycler = async (data) => {
   const {
     name, facility_location, latitude, longitude,
     materials_accepted, authorization_status, authorization_details,
-    authorization_number, verification_source,
-    contact_details, pickup_availability, service_area,
+    authorization_number, authorization_issue_date, authorization_valid_until, authorization_document_url,
+    verification_source, contact_details, pickup_availability, service_area,
   } = data;
 
   let finalLat = latitude;
@@ -55,15 +55,17 @@ export const createRecycler = async (data) => {
   const result = await query(
     `INSERT INTO recyclers 
        (name, facility_location, latitude, longitude, materials_accepted,
-        authorization_status, authorization_details, authorization_number, verification_source,
-        contact_details, pickup_availability, service_area)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12)
+        authorization_status, authorization_details, authorization_number,
+        authorization_issue_date, authorization_valid_until, authorization_document_url,
+        verification_source, contact_details, pickup_availability, service_area)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING *`,
     [
       name, facility_location ?? null, finalLat ?? null, finalLng ?? null,
       JSON.stringify(materials_accepted), authorization_status,
-      authorization_details ?? null, authorization_number ?? null, verification_source ?? null,
-      contact_details ?? null, pickup_availability ?? null, service_area ?? null,
+      authorization_details ?? null, authorization_number ?? null,
+      authorization_issue_date ?? null, authorization_valid_until ?? null, authorization_document_url ?? null,
+      verification_source ?? null, contact_details ?? null, pickup_availability ?? null, service_area ?? null,
     ]
   );
 
@@ -207,10 +209,16 @@ export const updateRecycler = async (id, updates) => {
     latitude: 'latitude',
     longitude: 'longitude',
     materials_accepted: 'materials_accepted',
+    account_status: 'account_status',
     authorization_status: 'authorization_status',
     authorization_details: 'authorization_details',
     authorization_number: 'authorization_number',
+    authorization_issue_date: 'authorization_issue_date',
+    authorization_valid_until: 'authorization_valid_until',
+    authorization_document_url: 'authorization_document_url',
+    rejection_reason: 'rejection_reason',
     verification_source: 'verification_source',
+    verified_by: 'verified_by',
     contact_details: 'contact_details',
     profile_image: 'profile_image',
     pickup_availability: 'pickup_availability',
@@ -260,6 +268,58 @@ export const updateRecycler = async (id, updates) => {
   const result = await query(
     `UPDATE recyclers SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
     values
+  );
+
+  return result.rows[0];
+};
+
+/**
+ * Recycler submits an authorization renewal request with updated document and expiry date.
+ * Sets authorization_status = 'renewal_pending' for admin review.
+ * @param {number} id
+ * @param {Object} data
+ * @returns {Promise<Object>}
+ */
+export const renewRecyclerAuthorization = async (id, data) => {
+  const existing = await getRecyclerById(id);
+  const {
+    authorization_number,
+    authorization_issue_date,
+    authorization_valid_until,
+    authorization_document_url,
+    authorization_details,
+  } = data;
+
+  let docUrl = authorization_document_url ?? existing.authorization_document_url;
+  if (data.authorization_document || data.document_base64) {
+    const raw = data.authorization_document || data.document_base64;
+    const uploadedUrl = await uploadImage(raw, {
+      folder: `kabadiwala/recyclers/${id}/documents`,
+      publicId: `doc-${Date.now()}`,
+    });
+    if (uploadedUrl) docUrl = uploadedUrl;
+  }
+
+  const result = await query(
+    `UPDATE recyclers
+     SET authorization_number = COALESCE($1, authorization_number),
+         authorization_issue_date = COALESCE($2, authorization_issue_date),
+         authorization_valid_until = COALESCE($3, authorization_valid_until),
+         authorization_document_url = COALESCE($4, authorization_document_url),
+         authorization_details = COALESCE($5, authorization_details),
+         authorization_status = 'renewal_pending',
+         account_status = 'PENDING',
+         rejection_reason = NULL
+     WHERE id = $6
+     RETURNING *`,
+    [
+      authorization_number ?? null,
+      authorization_issue_date ?? null,
+      authorization_valid_until ?? null,
+      docUrl ?? null,
+      authorization_details ?? null,
+      id,
+    ]
   );
 
   return result.rows[0];

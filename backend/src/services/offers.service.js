@@ -422,14 +422,35 @@ export const rejectOffer = async (offerId) => {
  */
 export const getOffersByLot = async (lotId) => {
   const result = await query(
-    `SELECT o.*, r.name AS recycler_name, r.facility_location AS recycler_facility
+    `SELECT o.*,
+            r.name AS recycler_name,
+            r.facility_location AS recycler_facility,
+            r.contact_details AS recycler_contact_details,
+            r.pickup_availability AS recycler_pickup_availability,
+            r.service_area AS recycler_service_area,
+            t.transaction_status
      FROM offers o
      JOIN recyclers r ON o.recycler_id = r.id
+     LEFT JOIN transactions t ON t.lot_id = o.lot_id
      WHERE o.lot_id = $1
      ORDER BY o.created_at DESC`,
     [lotId]
   );
-  return result.rows;
+
+  return result.rows.map((row) => {
+    const isUnlocked = row.offer_status === 'accepted' ||
+                       row.transaction_status === 'accepted' ||
+                       row.transaction_status === 'handed_over' ||
+                       row.transaction_status === 'confirmed';
+
+    return {
+      ...row,
+      contact_unlocked: isUnlocked,
+      contact_details: isUnlocked ? row.recycler_contact_details : null,
+      recycler_phone: isUnlocked ? row.recycler_contact_details : null,
+      pickup_availability: row.recycler_pickup_availability || 'On Request',
+    };
+  });
 };
 
 /**

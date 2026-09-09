@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getRecycler, updateRecycler, MATERIAL_CATEGORIES } from '../api/client';
+import { getRecycler, updateRecycler, renewRecyclerAuthorization, MATERIAL_CATEGORIES } from '../api/client';
 import { resolveRecyclerId } from '../services/auth';
 import { StatusBadge } from '../components/StatusBadge';
 import { PageLoader, LoadingSpinner } from '../components/LoadingSpinner';
@@ -18,6 +18,16 @@ export default function RecyclerProfile() {
   const [editing, setEditing] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [avatarFile, setAvatarFile] = useState(null);
+
+  // Authorization Renewal State
+  const [showRenewModal, setShowRenewModal] = useState(false);
+  const [renewing, setRenewing] = useState(false);
+  const [renewForm, setRenewForm] = useState({
+    authorization_number: '',
+    authorization_issue_date: '',
+    authorization_valid_until: '',
+    authorization_document_url: '',
+  });
   const recyclerId = resolveRecyclerId();
 
   function fileToDataUrl(file, maxDim = 640, quality = 0.8) {
@@ -118,13 +128,50 @@ export default function RecyclerProfile() {
 
   function handleCancel() {
     setForm(recycler);
+    if (recycler?.profile_image) {
+      setAvatarPreview(recycler.profile_image);
+    } else {
+      setAvatarPreview(null);
+    }
     setAvatarFile(null);
-    setAvatarPreview(recycler?.profile_image || null);
     setEditing(false);
     setError('');
   }
 
+  function openRenewModal() {
+    setRenewForm({
+      authorization_number: recycler?.authorization_number || '',
+      authorization_issue_date: recycler?.authorization_issue_date ? new Date(recycler.authorization_issue_date).toISOString().slice(0, 10) : '',
+      authorization_valid_until: recycler?.authorization_valid_until ? new Date(recycler.authorization_valid_until).toISOString().slice(0, 10) : '',
+      authorization_document_url: recycler?.authorization_document_url || '',
+    });
+    setShowRenewModal(true);
+  }
+
+  async function handleRenewSubmit(e) {
+    if (e) e.preventDefault();
+    setRenewing(true);
+    setError('');
+    setSuccess('');
+    try {
+      const res = await renewRecyclerAuthorization(recyclerId, renewForm);
+      setRecycler(res.data);
+      setForm(res.data);
+      setSuccess('Authorization renewal application submitted! Pending admin verification.');
+      setShowRenewModal(false);
+    } catch (err) {
+      setError(err.message || 'Failed to submit authorization renewal');
+    } finally {
+      setRenewing(false);
+    }
+  }
+
   if (loading) return <div className="container"><PageLoader /></div>;
+
+  const isExpiredOrWarning = recycler?.authorization_status === 'expiring_soon' ||
+                             recycler?.authorization_status === 'expired' ||
+                             recycler?.account_status === 'SUSPENDED' ||
+                             recycler?.authorization_status === 'unauthorized';
 
   return (
     <div className="container">
@@ -157,8 +204,10 @@ export default function RecyclerProfile() {
           </div>
           <div>
             <h1 className="section-title">{recycler?.name || t('recyclerDash.myProfile')}</h1>
-            <p className="section-subtitle">
-              {recycler?.facility_location} · <StatusBadge status={recycler?.authorization_status} />
+            <p className="section-subtitle" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px' }}>
+              <span>{recycler?.facility_location}</span> · 
+              <StatusBadge status={recycler?.account_status || 'ACTIVE'} size="md" />
+              <StatusBadge status={recycler?.authorization_status} size="md" />
             </p>
           </div>
           {!editing && (
@@ -177,6 +226,24 @@ export default function RecyclerProfile() {
       {success && (
         <div className="alert-banner alert-banner--success animate-fade-in">
            {success}
+        </div>
+      )}
+
+      {isExpiredOrWarning && (
+        <div className="alert-banner alert-banner--warn animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <strong>⚠️ Controlled Recycler Authorization Status Alert:</strong>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem' }}>
+              {recycler?.authorization_status === 'expired' || recycler?.account_status === 'SUSPENDED'
+                ? 'Your SPCB authorization has EXPIRED or been SUSPENDED. Your facility is currently excluded from matching results until renewed.'
+                : recycler?.authorization_status === 'expiring_soon'
+                ? 'Your SPCB authorization is EXPIRING SOON. Please upload your renewed certificate before expiry.'
+                : 'Your recycler registration is pending or requires authorization re-verification.'}
+            </p>
+          </div>
+          <button className="btn btn-accent btn-sm" onClick={openRenewModal}>
+            📄 Submit Renewal Application
+          </button>
         </div>
       )}
 
@@ -266,7 +333,7 @@ export default function RecyclerProfile() {
           </div>
         </section>
 
-        {/* Materials Accepted */}
+        {/* Materials Accepted & Controlled Authorization */}
         <section className="card animate-scale-in" aria-labelledby="profile-mats-heading">
           <h2 id="profile-mats-heading" className="detail-section-title">{t('createLot.category.heading')}</h2>
 
@@ -306,19 +373,56 @@ export default function RecyclerProfile() {
             </div>
           )}
 
-          {/* Authorization info (read-only) */}
+          {/* Authorization info */}
           <div className="divider" style={{ margin: 'var(--space-5) 0' }} />
           <div className="auth-info">
-            <div>
-              <p className="detail-item__label">{t('status.confirmed').replace('Confirmed', 'Authorization Status')}</p>
-              <StatusBadge status={recycler?.authorization_status} size="md" />
-            </div>
-            {recycler?.authorization_details && (
+            <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '12px' }}>
+              📜 SPCB Authorization & Governance
+            </h3>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '12px' }}>
               <div>
-                <p className="detail-item__label">Authorization Details</p>
-                <p className="profile-value">{recycler.authorization_details}</p>
+                <p className="detail-item__label">Account Status</p>
+                <StatusBadge status={recycler?.account_status || 'ACTIVE'} size="md" />
+              </div>
+              <div>
+                <p className="detail-item__label">Authorization Status</p>
+                <StatusBadge status={recycler?.authorization_status} size="md" />
+              </div>
+              <div>
+                <p className="detail-item__label">SPCB License #</p>
+                <p className="profile-value font-mono">{recycler?.authorization_number || '—'}</p>
+              </div>
+              <div>
+                <p className="detail-item__label">Issue Date</p>
+                <p className="profile-value">{recycler?.authorization_issue_date ? new Date(recycler.authorization_issue_date).toLocaleDateString('en-IN') : '—'}</p>
+              </div>
+              <div>
+                <p className="detail-item__label">Expiry Date</p>
+                <p className="profile-value font-mono" style={{ color: isExpiredOrWarning ? 'var(--color-destructive, #dc2626)' : 'inherit' }}>
+                  {recycler?.authorization_valid_until ? new Date(recycler.authorization_valid_until).toLocaleDateString('en-IN') : '—'}
+                </p>
+              </div>
+            </div>
+
+            {recycler?.authorization_document_url && (
+              <div style={{ marginBottom: '12px' }}>
+                <p className="detail-item__label">Submitted Document</p>
+                <a href={recycler.authorization_document_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm" style={{ padding: 0, textDecoration: 'underline' }}>
+                  📎 View SPCB Authorization Document
+                </a>
               </div>
             )}
+
+            {recycler?.rejection_reason && (
+              <div className="alert-banner alert-banner--error" style={{ fontSize: '0.85rem', padding: '8px 12px', marginTop: '8px' }}>
+                <strong>Rejection Reason:</strong> {recycler.rejection_reason}
+              </div>
+            )}
+
+            <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: '12px' }} onClick={openRenewModal}>
+              🔄 Renew Authorization Certificate
+            </button>
           </div>
         </section>
       </div>
@@ -333,6 +437,76 @@ export default function RecyclerProfile() {
             {saving ? <LoadingSpinner size="sm" /> : null}
             {saving ? `${t('recyclerDash.profileUpdated').replace('!', '...').replace('updated successfully', 'Saving')}` : ` ${t('common.save') || 'Save Changes'}`}
           </button>
+        </div>
+      )}
+
+      {/* Renewal Application Modal */}
+      {showRenewModal && (
+        <div className="modal-backdrop animate-fade-in" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card animate-scale-in" style={{ width: '90%', maxWidth: '540px', background: 'var(--color-bg, #fff)', padding: '24px', borderRadius: '12px' }}>
+            <h2 className="section-title" style={{ fontSize: '1.25rem', marginBottom: '8px' }}>
+              🔄 Submit Authorization Renewal
+            </h2>
+            <p className="section-subtitle" style={{ fontSize: '0.9rem', marginBottom: '16px' }}>
+              Upload your updated State Pollution Control Board (SPCB) authorization details for admin re-verification.
+            </p>
+
+            <form onSubmit={handleRenewSubmit}>
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label className="form-label">SPCB Authorization / License Number</label>
+                <input
+                  className="form-input"
+                  required
+                  placeholder="e.g. SPCB/AUTH/2026/089"
+                  value={renewForm.authorization_number}
+                  onChange={e => setRenewForm({ ...renewForm, authorization_number: e.target.value })}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                <div className="form-group">
+                  <label className="form-label">Issue Date</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={renewForm.authorization_issue_date}
+                    onChange={e => setRenewForm({ ...renewForm, authorization_issue_date: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Expiry Date (Valid Until)</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    required
+                    value={renewForm.authorization_valid_until}
+                    onChange={e => setRenewForm({ ...renewForm, authorization_valid_until: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="form-label">Authorization Certificate Document (URL / Link)</label>
+                <input
+                  type="url"
+                  className="form-input"
+                  placeholder="https://spcb.gov.in/docs/cert_123.pdf"
+                  value={renewForm.authorization_document_url}
+                  onChange={e => setRenewForm({ ...renewForm, authorization_document_url: e.target.value })}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-outline" onClick={() => setShowRenewModal(false)} disabled={renewing}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-accent" disabled={renewing}>
+                  {renewing ? <LoadingSpinner size="sm" /> : null}
+                  {renewing ? 'Submitting…' : 'Submit Application'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

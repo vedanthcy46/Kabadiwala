@@ -12,6 +12,7 @@ const seedFiles = [
   '08_ai_governance.sql',
   '09_lot_cancellation.sql',
   '10_price_observations.sql',
+  '11_recycler_verification_workflow.sql',
   '02_seed_recyclers_prices.sql',
   '03_seed_transactions.sql',
   '05_seed_recycler_rates.sql',

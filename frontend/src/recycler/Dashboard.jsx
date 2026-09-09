@@ -56,12 +56,17 @@ export default function RecyclerDashboard() {
           <h1 className="section-title">
             {recycler ? recycler.name : t('recyclerDash.title')}
           </h1>
-          <p className="section-subtitle">
-            {recycler ? `${recycler.facility_location} · ${recycler.authorization_status}` : t('recyclerDash.subtitle')}
+          <p className="section-subtitle" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px' }}>
+            {recycler ? (
+              <>
+                <span>{recycler.facility_location}</span> · 
+                <StatusBadge status={recycler.account_status || 'ACTIVE'} size="sm" />
+                <StatusBadge status={recycler.authorization_status} size="sm" />
+              </>
+            ) : t('recyclerDash.subtitle')}
           </p>
         </div>
         <Link to="/recycler?section=profile" className="btn btn-outline">
-          
           {t('recyclerProfile.title')}
         </Link>
         <Link to="/recycler/scan" className="btn btn-accent" id="scan-lot-cta">
@@ -72,6 +77,24 @@ export default function RecyclerDashboard() {
       {error && (
         <div className="alert-banner alert-banner--warn animate-fade-in">
            {error}
+        </div>
+      )}
+
+      {recycler && (recycler.authorization_status === 'expiring_soon' || recycler.authorization_status === 'expired' || recycler.account_status === 'SUSPENDED' || recycler.authorization_status === 'renewal_pending') && (
+        <div className="alert-banner alert-banner--warn animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: 'var(--space-6)' }}>
+          <div>
+            <strong>⚠️ Recycler Verification Alert:</strong>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem' }}>
+              {recycler.authorization_status === 'expired' || recycler.account_status === 'SUSPENDED'
+                ? 'Your authorization has EXPIRED or been SUSPENDED. Matching is temporarily paused.'
+                : recycler.authorization_status === 'expiring_soon'
+                ? 'Your SPCB authorization certificate is EXPIRING SOON. Please submit renewal.'
+                : 'Your authorization renewal application is under admin review.'}
+            </p>
+          </div>
+          <Link to="/recycler?section=profile" className="btn btn-accent btn-sm">
+            📄 Open Authorization Renewal
+          </Link>
         </div>
       )}
 

@@ -25,14 +25,18 @@ const STATUS_VISUAL = {
   pending:              { bg: 'var(--status-pending-bg)',       fg: 'var(--status-pending)',       icon: '' },
   paid:                 { bg: 'var(--status-confirmed-bg)',     fg: 'var(--status-confirmed)',     icon: '₹' },
   partially_paid:       { bg: 'var(--color-warning-light)',     fg: 'var(--color-warning)',        icon: '◑' },
-  authorized:           { bg: 'var(--status-confirmed-bg)',     fg: 'var(--status-confirmed)',     icon: '' },
-  unauthorized:         { bg: 'var(--color-destructive-light)', fg: 'var(--color-destructive)',    icon: '' },
+  authorized:           { bg: 'var(--status-confirmed-bg)',     fg: 'var(--status-confirmed)',     icon: '✓' },
+  unauthorized:         { bg: 'var(--color-destructive-light)', fg: 'var(--color-destructive)',    icon: '✕' },
+  expiring_soon:        { bg: 'var(--color-warning-light)',     fg: 'var(--color-warning)',        icon: '⚠️' },
+  renewal_pending:      { bg: 'var(--color-info-light)',        fg: 'var(--color-info)',          icon: '↻' },
+  active:               { bg: 'var(--status-confirmed-bg)',     fg: 'var(--status-confirmed)',     icon: '✓' },
+  suspended:            { bg: 'var(--color-destructive-light)', fg: 'var(--color-destructive)',    icon: '⛔' },
   in_progress:          { bg: 'var(--status-in-progress-bg)',   fg: 'var(--status-in-progress)',   icon: '↻' },
   cancelled:            { bg: 'rgba(239, 68, 68, 0.15)',        fg: '#ef4444',                     icon: '⊘' },
   default:              { bg: 'var(--color-muted)',             fg: 'var(--color-text-muted)',     icon: '?' },
 };
 
-// Map status keys → translation keys in the 'status' namespace
+// Map status keys → translation keys or raw fallback labels
 const STATUS_LABEL_KEYS = {
   quoted:               'status.quoted',
   requested:            'status.requested',
@@ -49,6 +53,10 @@ const STATUS_LABEL_KEYS = {
   partially_paid:       'status.pending',
   authorized:           'recyclerProfile.authorizedYes',
   unauthorized:         'recyclerProfile.authorizedNo',
+  expiring_soon:        'Expiring Soon',
+  renewal_pending:      'Renewal Pending',
+  active:               'Active',
+  suspended:            'Suspended',
   in_progress:          'status.initiated',
   cancelled:            'status.cancelled',
   default:              'common.noData',
@@ -58,8 +66,9 @@ export function StatusBadge({ status, size = 'sm' }) {
   const { t } = useTranslation();
   const key = status?.toLowerCase();
   const visual = STATUS_VISUAL[key] || STATUS_VISUAL.default;
-  const labelKey = STATUS_LABEL_KEYS[key] || STATUS_LABEL_KEYS.default;
-  const label = t(labelKey);
+  const rawLabel = STATUS_LABEL_KEYS[key];
+  const labelKey = rawLabel || STATUS_LABEL_KEYS.default;
+  const label = (rawLabel && !rawLabel.includes('.')) ? rawLabel : t(labelKey);
 
   const fontSize = size === 'sm' ? 'var(--text-xs)' : 'var(--text-sm)';
   return (

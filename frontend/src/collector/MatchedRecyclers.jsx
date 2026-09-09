@@ -401,16 +401,59 @@ export default function MatchedRecyclers() {
               </div>
 
               {acceptedOffer ? (
-                <div className="confirmed-banner" role="status">
-                  {t('quotes.acceptedBanner', {
-                    recycler: acceptedOffer.recycler_name,
-                    price: `₹${Number(acceptedOffer.offered_price).toLocaleString('en-IN')}`,
-                  })}
+                <div>
+                  <div className="confirmed-banner" role="status" style={{ marginBottom: '12px' }}>
+                    {t('quotes.acceptedBanner', {
+                      recycler: acceptedOffer.recycler_name,
+                      price: `₹${Number(acceptedOffer.offered_price).toLocaleString('en-IN')}`,
+                    })}
+                  </div>
+
+                  <div className="card" style={{ background: 'var(--color-surface-alt, #f8fafc)', padding: '16px', borderRadius: '10px', border: '1px solid var(--color-success, #16a34a)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '600', color: 'var(--color-success, #16a34a)' }}>
+                        📞 Pickup Coordination & Recycler Contact
+                      </h3>
+                      <span className="pill" style={{ background: 'var(--status-confirmed-bg)', color: 'var(--status-confirmed)', fontSize: '0.8rem' }}>
+                        ✅ Contact Unlocked
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '10px' }}>
+                      <div>
+                        <span className="detail-item__label" style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Facility Name</span>
+                        <p style={{ margin: '2px 0 0 0', fontWeight: '600' }}>{acceptedOffer.recycler_name}</p>
+                      </div>
+                      <div>
+                        <span className="detail-item__label" style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Contact Person / Business Phone</span>
+                        <p style={{ margin: '2px 0 0 0', fontWeight: '600' }}>
+                          {acceptedOffer.contact_details || acceptedOffer.recycler_contact_details ? (
+                            <a href={`tel:${acceptedOffer.contact_details || acceptedOffer.recycler_contact_details}`} style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
+                              📞 {acceptedOffer.contact_details || acceptedOffer.recycler_contact_details}
+                            </a>
+                          ) : 'Available in dispatch confirmation'}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="detail-item__label" style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Pickup Availability</span>
+                        <p style={{ margin: '2px 0 0 0' }}>{acceptedOffer.pickup_availability || 'Daily / On Request'}</p>
+                      </div>
+                      <div>
+                        <span className="detail-item__label" style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Facility Location</span>
+                        <p style={{ margin: '2px 0 0 0' }}>{acceptedOffer.recycler_facility || acceptedOffer.recycler_service_area || 'Bengaluru'}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ) : openOffers.length === 0 ? (
                 <p className="quote-section__empty">{t('quotes.noOffersYet')}</p>
               ) : (
-                <ul className="quote-list">
+                <>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>🔐</span>
+                    <span>Recycler contact phone & direct details remain protected until you accept a quote.</span>
+                  </div>
+                  <ul className="quote-list">
                   {openOffers.map((o) => (
                     <li key={o.id} className="quote-item">
                       <div className="quote-item__main">
@@ -445,7 +488,8 @@ export default function MatchedRecyclers() {
                     </li>
                   ))}
                 </ul>
-              )}
+              </>
+            )}
             </section>
           )}
 

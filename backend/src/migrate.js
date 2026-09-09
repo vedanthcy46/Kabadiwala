@@ -15,11 +15,13 @@ async function main() {
   const aiFeedbackPath = path.join(__dirname, '..', 'sql', '06_ai_feedback.sql');
   const aiGovernancePath = path.join(__dirname, '..', 'sql', '08_ai_governance.sql');
   const priceObsPath = path.join(__dirname, '..', 'sql', '10_price_observations.sql');
+  const verifyPath = path.join(__dirname, '..', 'sql', '11_recycler_verification_workflow.sql');
   const sql = fs.readFileSync(schemaPath, 'utf8');
   const lotSystemSql = fs.readFileSync(lotSystemPath, 'utf8');
   const aiFeedbackSql = fs.readFileSync(aiFeedbackPath, 'utf8');
   const aiGovernanceSql = fs.readFileSync(aiGovernancePath, 'utf8');
   const priceObsSql = fs.readFileSync(priceObsPath, 'utf8');
+  const verifySql = fs.readFileSync(verifyPath, 'utf8');
 
   try {
     console.log('Running schema migration...');
@@ -28,6 +30,7 @@ async function main() {
     await pool.query(aiFeedbackSql);
     await pool.query(aiGovernanceSql);
     await pool.query(priceObsSql);
+    await pool.query(verifySql);
     console.log('✅ Schema created successfully.');
 
     const res = await pool.query(`

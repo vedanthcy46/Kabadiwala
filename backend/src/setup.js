@@ -25,6 +25,7 @@ const MIGRATIONS = [
   { file: '05_national_recyclers_schema.sql',label: 'National recyclers reference table' },
   { file: '09_lot_cancellation.sql',         label: 'Lot cancellation & audit fields' },
   { file: '10_price_observations.sql',       label: 'Price observations dataset for recycler quote analytics' },
+  { file: '11_recycler_verification_workflow.sql', label: 'Controlled recycler verification, document audit & expiry workflow' },
 ];
 
 // ── Seed files — run in dependency order ─────────────────────────────────────

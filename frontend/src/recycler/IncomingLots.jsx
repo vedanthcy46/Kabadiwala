@@ -282,17 +282,20 @@ export default function IncomingLots() {
               <p className="lot-card__category">{lot.category}</p>
               <div className="lot-card__details">
                 <div className="lot-card__detail">
-                  
                   <span>{lot.approx_weight_kg ?? '?'} kg</span>
                 </div>
-                {lot.recycler_name && (
-                  <div className="lot-card__detail">
-                    
-                    <span>{lot.recycler_name}</span>
-                  </div>
-                )}
+                <div className="lot-card__detail" style={{ fontSize: '0.85rem' }}>
+                  {lot.contact_unlocked || ['accepted', 'handed_over', 'confirmed'].includes(lot.transaction_status) ? (
+                    <span style={{ color: 'var(--color-success, #16a34a)', fontWeight: '600' }}>
+                      📞 {lot.collector_name}: {lot.collector_phone || 'Unlocked'}
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--color-text-muted)' }}>
+                      📍 {lot.collection_location || 'Bengaluru'} (Contact Locked 🔐)
+                    </span>
+                  )}
+                </div>
                 <div className="lot-card__detail">
-                  
                   <span>{fmtDate(lot.created_at)}</span>
                 </div>
               </div>

@@ -42,6 +42,10 @@ export default function RecyclerLogin() {
     materials_accepted: [],
     pickup_availability: 'on_request',
     service_area: '',
+    authorization_number: '',
+    authorization_issue_date: '',
+    authorization_valid_until: '',
+    authorization_document_url: '',
     authorization_details: '',
   });
   const [applyError, setApplyError] = useState('');
@@ -476,16 +480,62 @@ export default function RecyclerLogin() {
             </div>
 
             <div className="form-group">
-              <label className="form-label" htmlFor="apply-auth">SPCB Authorization Details</label>
+              <label className="form-label" htmlFor="apply-auth-num">SPCB Authorization / License Number</label>
+              <input
+                id="apply-auth-num"
+                className="form-input"
+                placeholder="e.g. SPCB/AUTH/2026/102"
+                value={form.authorization_number}
+                onChange={e => setForm(f => ({ ...f, authorization_number: e.target.value }))}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+              <div className="form-group">
+                <label className="form-label" htmlFor="apply-auth-issue">License Issue Date</label>
+                <input
+                  id="apply-auth-issue"
+                  type="date"
+                  className="form-input"
+                  value={form.authorization_issue_date}
+                  onChange={e => setForm(f => ({ ...f, authorization_issue_date: e.target.value }))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="apply-auth-expiry">License Expiry Date *</label>
+                <input
+                  id="apply-auth-expiry"
+                  type="date"
+                  className="form-input"
+                  value={form.authorization_valid_until}
+                  onChange={e => setForm(f => ({ ...f, authorization_valid_until: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="apply-doc-url">Authorization Certificate Document Link (PDF / Image URL)</label>
+              <input
+                id="apply-doc-url"
+                type="url"
+                className="form-input"
+                placeholder="https://spcb.gov.in/docs/cert_102.pdf"
+                value={form.authorization_document_url}
+                onChange={e => setForm(f => ({ ...f, authorization_document_url: e.target.value }))}
+              />
+              <p className="form-hint">Upload or link your SPCB authorization document so platform admin can review and verify your application.</p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="apply-auth">SPCB Authorization Notes / Remarks</label>
               <textarea
                 id="apply-auth"
                 className="form-input"
                 rows={2}
-                placeholder="Authorization number, issuing authority, validity date…"
+                placeholder="Issuing authority, hazardous waste handling limits, special permits…"
                 value={form.authorization_details}
                 onChange={e => setForm(f => ({ ...f, authorization_details: e.target.value }))}
               />
-              <p className="form-hint">Admin will verify this before approving your account.</p>
             </div>
 
             <button

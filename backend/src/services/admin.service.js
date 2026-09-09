@@ -20,18 +20,45 @@ export const adminLogin = async (code) => {
   };
 };
 
+export const syncRecyclerExpiryStatuses = async () => {
+  try {
+    // 1. Expire recyclers past their valid_until date -> SUSPENDED & EXPIRED
+    await query(
+      `UPDATE recyclers
+       SET authorization_status = 'expired',
+           account_status = 'SUSPENDED'
+       WHERE authorization_valid_until IS NOT NULL
+         AND authorization_valid_until < CURRENT_DATE
+         AND authorization_status NOT IN ('expired', 'unauthorized')`
+    );
+
+    // 2. Mark recyclers expiring within 30 days -> EXPIRING_SOON
+    await query(
+      `UPDATE recyclers
+       SET authorization_status = 'expiring_soon'
+       WHERE authorization_valid_until IS NOT NULL
+         AND authorization_valid_until >= CURRENT_DATE
+         AND authorization_valid_until <= CURRENT_DATE + INTERVAL '30 days'
+         AND authorization_status IN ('authorized', 'valid')`
+    );
+  } catch (err) {
+    console.error('[syncRecyclerExpiryStatuses] Non-fatal error:', err.message);
+  }
+};
+
 /**
  * High-level dashboard counts + alerts for the admin panel.
  * @returns {Promise<Object>}
  */
 export const adminSummary = async () => {
+  await syncRecyclerExpiryStatuses();
   const result = await query(
     `SELECT
        (SELECT COUNT(*) FROM collectors)            AS collectors,
        (SELECT COUNT(*) FROM recyclers)             AS recyclers,
-       (SELECT COUNT(*) FROM recyclers WHERE authorization_status = 'pending') AS pending_recyclers,
+       (SELECT COUNT(*) FROM recyclers WHERE authorization_status IN ('pending', 'renewal_pending') OR COALESCE(account_status, 'ACTIVE') = 'PENDING') AS pending_recyclers,
        (SELECT COUNT(*) FROM recyclers
-          WHERE authorization_status = 'authorized'
+          WHERE authorization_status IN ('authorized', 'expiring_soon', 'valid')
             AND authorization_valid_until IS NOT NULL
             AND authorization_valid_until BETWEEN CURRENT_DATE AND CURRENT_DATE + 60) AS expiring_authorizations,
        (SELECT COUNT(*) FROM materials)             AS lots,
@@ -48,25 +75,38 @@ export const adminSummary = async () => {
 /**
  * Admin approves or rejects a recycler's authorization application.
  * @param {number} id
- * @param {Object} data { decision: 'authorized' | 'unauthorized', verification_source? }
+ * @param {Object} data { decision: 'authorized' | 'unauthorized', verification_source?, rejection_reason? }
  * @returns {Promise<Object>}
  */
 export const verifyRecycler = async (id, data) => {
-  const { decision, verification_source } = data;
+  const { decision, verification_source, rejection_reason } = data;
 
   const existing = await query('SELECT id FROM recyclers WHERE id = $1', [id]);
   if (existing.rows.length === 0) {
     throw new ApiError(404, 'Recycler not found');
   }
 
+  const isApprove = decision === 'authorized' || decision === 'valid';
+  const newAccountStatus = isApprove ? 'ACTIVE' : 'REJECTED';
+  const newAuthStatus = isApprove ? 'authorized' : 'unauthorized';
+
   const result = await query(
     `UPDATE recyclers
-     SET authorization_status = $1,
+     SET account_status = $1,
+         authorization_status = $2,
          last_verified_at = NOW(),
-         verification_source = COALESCE($2, verification_source)
-     WHERE id = $3
+         verified_by = 'ADMIN_ID',
+         rejection_reason = $3,
+         verification_source = COALESCE($4, verification_source)
+     WHERE id = $5
      RETURNING *`,
-    [decision, verification_source ?? null, id]
+    [
+      newAccountStatus,
+      newAuthStatus,
+      isApprove ? null : (rejection_reason || 'Authorization document or registration is invalid'),
+      verification_source ?? null,
+      id,
+    ]
   );
 
   return result.rows[0];

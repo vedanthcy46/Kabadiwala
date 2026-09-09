@@ -13,5 +13,6 @@ export const verifyRecyclerSchema = {
   body: z.object({
     decision: z.enum(['authorized', 'unauthorized']),
     verification_source: z.string().optional(),
+    rejection_reason: z.string().optional(),
   }),
 };

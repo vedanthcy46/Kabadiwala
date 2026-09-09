@@ -243,43 +243,77 @@ export const getAnomalies = async ({ category, page = 1, limit = 20 }) => {
        WHERE recycler_id IS NULL
        ORDER BY material_category, price_date DESC
      ),
-     flagged AS (
+     calc AS (
        SELECT 
          t.id, t.lot_id, t.material_category, t.quantity_weight_kg,
          t.quoted_price, t.final_price, t.recycler_id, t.txn_datetime,
          r.name AS recycler_name,
+         lp.market_range_low, lp.market_range_high,
+         COALESCE(cs.sample_count, 0) AS sample_count,
          ROUND((t.final_price / NULLIF(t.quantity_weight_kg, 0))::numeric, 2) AS unit_price,
-         ROUND(COALESCE(cs.avg_unit_price, lp.buying_price, 0)::numeric, 2) AS avg_unit_price,
-         ROUND(cs.stddev_unit_price::numeric, 2) AS stddev_unit_price,
-         CASE 
-           WHEN cs.stddev_unit_price > 0 AND cs.sample_count >= 5 THEN 
-             ROUND(((t.final_price / NULLIF(t.quantity_weight_kg, 0)) - cs.avg_unit_price) / cs.stddev_unit_price, 2)
-           ELSE NULL
-         END AS z_score,
-         CASE
-           WHEN cs.stddev_unit_price > 0 AND cs.sample_count >= 5 AND 
-                ABS((t.final_price / NULLIF(t.quantity_weight_kg, 0)) - cs.avg_unit_price) / cs.stddev_unit_price > 2
-             THEN 'high'
-           WHEN cs.stddev_unit_price > 0 AND cs.sample_count >= 5 AND 
-                ABS((t.final_price / NULLIF(t.quantity_weight_kg, 0)) - cs.avg_unit_price) / cs.stddev_unit_price > 1.5
-             THEN 'medium'
-           WHEN lp.market_range_low IS NOT NULL AND (t.final_price / NULLIF(t.quantity_weight_kg, 0)) < lp.market_range_low
-             THEN 'high'
-           WHEN lp.market_range_high IS NOT NULL AND (t.final_price / NULLIF(t.quantity_weight_kg, 0)) > (lp.market_range_high * 1.5)
-             THEN 'medium'
-           WHEN t.quoted_price IS NOT NULL AND (t.final_price / NULLIF(t.quantity_weight_kg, 0)) < ((t.quoted_price / NULLIF(t.quantity_weight_kg, 0)) * 0.95)
-             THEN 'medium'
-           ELSE 'normal'
-         END AS severity
+         ROUND(
+           CASE 
+             WHEN cs.sample_count >= 5 THEN cs.avg_unit_price
+             WHEN lp.buying_price IS NOT NULL THEN lp.buying_price
+             ELSE COALESCE(cs.avg_unit_price, 0)
+           END::numeric, 2
+         ) AS avg_unit_price,
+         GREATEST(
+           CASE 
+             WHEN cs.sample_count >= 5 AND cs.stddev_unit_price > 0 THEN cs.stddev_unit_price
+             WHEN lp.market_range_high IS NOT NULL AND lp.market_range_low IS NOT NULL AND (lp.market_range_high > lp.market_range_low)
+               THEN (lp.market_range_high - lp.market_range_low) / 4.0
+             WHEN lp.buying_price IS NOT NULL AND lp.buying_price > 0
+               THEN lp.buying_price * 0.15
+             ELSE 25.0
+           END, 0.01
+         ) AS effective_stddev
        FROM transactions t
        LEFT JOIN category_stats cs ON t.material_category = cs.material_category
        LEFT JOIN latest_prices lp ON t.material_category = lp.material_category
        LEFT JOIN recyclers r ON t.recycler_id = r.id
        ${whereClause}
+     ),
+     flagged AS (
+       SELECT 
+         c.*,
+         ROUND(((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 2) AS z_score,
+         CASE
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 2 THEN 'high'
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 1.5 THEN 'medium'
+           WHEN c.market_range_low IS NOT NULL AND c.unit_price < c.market_range_low THEN 'high'
+           WHEN c.market_range_high IS NOT NULL AND c.unit_price > (c.market_range_high * 1.5) THEN 'medium'
+           WHEN c.quoted_price IS NOT NULL AND c.unit_price < ((c.quoted_price / NULLIF(c.quantity_weight_kg, 0)) * 0.95) THEN 'medium'
+           ELSE 'normal'
+         END AS severity,
+         CASE
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 2 THEN 'STATISTICAL_OUTLIER'
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 1.5 THEN 'STATISTICAL_DEV'
+           WHEN c.market_range_low IS NOT NULL AND c.unit_price < c.market_range_low THEN 'BELOW_MARKET_MIN'
+           WHEN c.market_range_high IS NOT NULL AND c.unit_price > (c.market_range_high * 1.5) THEN 'ABOVE_MARKET_MAX'
+           WHEN c.quoted_price IS NOT NULL AND c.unit_price < ((c.quoted_price / NULLIF(c.quantity_weight_kg, 0)) * 0.95) THEN 'QUOTE_HAIRCUT'
+           ELSE 'NORMAL'
+         END AS anomaly_code,
+         CASE
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 2 THEN 'Statistical Outlier (' || ROUND(ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 1) || 'σ)'
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 1.5 THEN 'Statistical Deviation (' || ROUND(ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 1) || 'σ)'
+           WHEN c.market_range_low IS NOT NULL AND c.unit_price < c.market_range_low THEN 'Below Market Range Minimum'
+           WHEN c.market_range_high IS NOT NULL AND c.unit_price > (c.market_range_high * 1.5) THEN 'Above Market Range Maximum'
+           WHEN c.quoted_price IS NOT NULL AND c.unit_price < ((c.quoted_price / NULLIF(c.quantity_weight_kg, 0)) * 0.95) THEN 'Unapproved Quote Rate Haircut'
+           ELSE 'Normal'
+         END AS anomaly_label,
+         CASE
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 2 THEN 'Unit price ₹' || c.unit_price || '/kg deviates by ' || ROUND(ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 1) || 'σ from expected benchmark (₹' || c.avg_unit_price || '/kg).'
+           WHEN c.market_range_low IS NOT NULL AND c.unit_price < c.market_range_low THEN 'Unit price ₹' || c.unit_price || '/kg is below the prevailing regional market benchmark (₹' || ROUND(c.market_range_low::numeric, 2) || ' – ₹' || ROUND(c.market_range_high::numeric, 2) || '/kg), resulting in a ' || ROUND(ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 1) || 'σ deviation.'
+           WHEN c.market_range_high IS NOT NULL AND c.unit_price > (c.market_range_high * 1.5) THEN 'Unit price ₹' || c.unit_price || '/kg is significantly higher than regional market upper bound (₹' || ROUND(c.market_range_high::numeric, 2) || '/kg).'
+           WHEN c.quoted_price IS NOT NULL AND c.unit_price < ((c.quoted_price / NULLIF(c.quantity_weight_kg, 0)) * 0.95) THEN 'Payout rate (₹' || c.unit_price || '/kg) is lower than the accepted recycler quote rate (₹' || ROUND((c.quoted_price / NULLIF(c.quantity_weight_kg, 0))::numeric, 2) || '/kg).'
+           ELSE 'Payout is within normal market and statistical bounds.'
+         END AS ai_explanation
+       FROM calc c
      )
      SELECT * FROM flagged
      WHERE severity IN ('high', 'medium')
-     ORDER BY ABS(z_score) DESC NULLS LAST, txn_datetime DESC
+     ORDER BY ABS(z_score) DESC, txn_datetime DESC
      LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
     [...params, limit, offset]
   );

@@ -54,6 +54,15 @@ export const updateRecycler = async (req, res) => {
   });
 };
 
+export const renewAuthorization = async (req, res) => {
+  const recycler = await recyclerCrudService.renewRecyclerAuthorization(req.params.id, req.body);
+
+  res.status(200).json({
+    success: true,
+    data: recycler,
+  });
+};
+
 export const deleteRecycler = async (req, res) => {
   await recyclerCrudService.deleteRecycler(req.params.id);
 

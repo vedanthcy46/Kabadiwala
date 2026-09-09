@@ -34,10 +34,10 @@ router.put(
   recyclerCrudController.updateRecycler
 );
 
-router.delete(
-  '/:id',
+router.post(
+  '/:id/renew',
   validate(getRecyclerSchema),
-  recyclerCrudController.deleteRecycler
+  recyclerCrudController.renewAuthorization
 );
 
 export default router;

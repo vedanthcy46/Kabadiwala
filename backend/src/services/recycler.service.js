@@ -101,7 +101,9 @@ export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm
           ORDER BY (location = $5) DESC, price_date DESC, id DESC
           LIMIT 1
         ) m ON true
-        WHERE r.authorization_status = 'authorized'
+        WHERE COALESCE(r.account_status, 'ACTIVE') = 'ACTIVE'
+          AND r.authorization_status IN ('authorized', 'valid')
+          AND (r.authorization_valid_until IS NULL OR r.authorization_valid_until >= CURRENT_DATE)
           AND (
             r.materials_accepted ? $3
             OR r.materials_accepted ? UPPER($3)

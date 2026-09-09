@@ -665,7 +665,9 @@ export const getLotsByRecycler = async (recyclerId) => {
   const result = await query(
     `SELECT m.*,
             t.transaction_status, t.payment_status, t.final_price, t.payment_method,
-            t.collection_location,
+            t.collection_location AS raw_collection_location,
+            c.name AS raw_collector_name,
+            c.phone AS raw_collector_phone,
             r.name AS recycler_name,
             o.id AS open_offer_id,
             o.offered_price AS recycler_offer_price,
@@ -676,8 +678,9 @@ export const getLotsByRecycler = async (recyclerId) => {
             tr.confirmation_timestamp
      FROM materials m
      JOIN transactions t ON m.lot_id = t.lot_id
+     LEFT JOIN collectors c ON c.id = m.collector_id
      LEFT JOIN recyclers r ON t.recycler_id = r.id
-     LEFT JOIN offers o ON o.lot_id = m.lot_id AND o.recycler_id = $1 AND o.offer_status IN ('requested', 'offered')
+     LEFT JOIN offers o ON o.lot_id = m.lot_id AND o.recycler_id = $1 AND o.offer_status IN ('requested', 'offered', 'accepted')
      LEFT JOIN LATERAL (
        SELECT handover_reference_number, status, confirmation_timestamp
        FROM traceability
@@ -690,7 +693,27 @@ export const getLotsByRecycler = async (recyclerId) => {
     [recyclerId]
   );
 
-  return result.rows;
+  return result.rows.map((row) => {
+    const isUnlocked = row.transaction_status === 'accepted' ||
+                       row.transaction_status === 'handed_over' ||
+                       row.transaction_status === 'confirmed' ||
+                       row.recycler_offer_status === 'accepted';
+
+    let collection_location = row.raw_collection_location || 'Bengaluru';
+    if (!isUnlocked && collection_location && collection_location.includes(',')) {
+      const parts = collection_location.split(',').map((s) => s.trim());
+      collection_location = parts.slice(-2).join(', ');
+    }
+
+    return {
+      ...row,
+      contact_unlocked: isUnlocked,
+      collector_name: row.raw_collector_name || 'Collector',
+      collector_phone: isUnlocked ? row.raw_collector_phone : null,
+      collection_location,
+      exact_pickup_location: isUnlocked ? row.raw_collection_location : null,
+    };
+  });
 };
 
 /**
