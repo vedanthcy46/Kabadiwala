@@ -47,6 +47,7 @@ export default function MatchedRecyclers() {
   const [lng, setLng] = useState(initialLng);
   const [mapCenter, setMapCenter] = useState([initialLat, initialLng]);
   const [selectedId, setSelectedId] = useState(null);
+  const lotWeight = state?.weight || valuation?.weight_kg || valuation?.lot?.approx_weight_kg;
 
   const [detectingGps, setDetectingGps] = useState(false);
 
@@ -346,14 +347,21 @@ export default function MatchedRecyclers() {
 
       {/* Lot Summary Banner */}
       {valuation && (
-        <div className="lot-summary-banner animate-fade-in">
+        <div className="lot-summary-banner animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
           <div>
             <span className="lot-summary-banner__id">{lotId}</span>
-            <span className="lot-summary-banner__cat">{category}</span>
+            <span className="lot-summary-banner__cat" style={{ marginLeft: '8px' }}>
+              {category} {lotWeight ? `· ${lotWeight} kg` : ''}
+            </span>
           </div>
           <div className="lot-summary-banner__value">
-            {t('createLot.valuation.instantEstimate')}: ₹{Number(valuation?.lot?.estimated_value || valuation?.estimated_value || 0)
-              .toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            <span className="text-muted text-xs" style={{ display: 'block', textTransform: 'uppercase' }}>
+              Initial Platform Estimate
+            </span>
+            <strong>
+              Estimated Market Value: ₹{Number(valuation?.lot?.estimated_value || valuation?.estimated_value || 0)
+                .toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            </strong>
           </div>
         </div>
       )}
@@ -629,10 +637,15 @@ export default function MatchedRecyclers() {
                   <div className="recycler-stat">
                     <span className="recycler-stat__icon" aria-hidden="true">₹</span>
                     <div>
-                      <p className="recycler-stat__label">{t('recyclers.rate')}</p>
+                      <p className="recycler-stat__label">Recycler's Offer</p>
                       <p className="recycler-stat__value">
-                        {r.offered_rate ? `₹${r.offered_rate}${t('prices.perKg')}` : '—'}
+                        {r.offered_rate ? `₹${r.offered_rate} / kg` : '—'}
                       </p>
+                      {lotWeight && r.offered_rate ? (
+                        <p className="text-xs text-muted" style={{ marginTop: '2px' }}>
+                          Est: ₹{Math.round(Number(lotWeight) * Number(r.offered_rate)).toLocaleString('en-IN')}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                   <div className="recycler-stat">
@@ -658,18 +671,28 @@ export default function MatchedRecyclers() {
                 {/* Marketplace CTA — only when a lot exists */}
                 {lotId && acceptedOffer && (
                   isAcceptor ? (
-                    <button
-                      className="btn btn-accent btn-full"
-                      onClick={() => handleSelectRecycler(r)}
-                      disabled={!!handingOver}
-                      aria-busy={isHandingOver}
-                      id={`select-recycler-${recyclerId}`}
-                    >
-                      {isHandingOver
-                        ? <><LoadingSpinner size="sm" /> {t('recyclers.handingOver')}…</>
-                        : <> {t('recyclers.selectRecycler')}</>
-                      }
-                    </button>
+                    <div style={{ width: '100%' }}>
+                      <div style={{ background: 'var(--color-success-light, #dcfce7)', padding: '6px 10px', borderRadius: '6px', marginBottom: '8px', textAlign: 'center', fontSize: '0.85rem', color: 'var(--color-success, #16a34a)' }}>
+                        ✓ <strong>Accepted Recycler Rate:</strong> ₹{acceptedOffer.offered_price} / kg
+                        {lotWeight && (
+                          <span style={{ display: 'block', fontSize: '0.78rem' }}>
+                            Agreed payout at this rate: ₹{Math.round(Number(lotWeight) * Number(acceptedOffer.offered_price)).toLocaleString('en-IN')}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        className="btn btn-accent btn-full"
+                        onClick={() => handleSelectRecycler(r)}
+                        disabled={!!handingOver}
+                        aria-busy={isHandingOver}
+                        id={`select-recycler-${recyclerId}`}
+                      >
+                        {isHandingOver
+                          ? <><LoadingSpinner size="sm" /> {t('recyclers.handingOver')}…</>
+                          : <>Proceed to Handover</>
+                        }
+                      </button>
+                    </div>
                   ) : (
                     <p className="quote-section__empty" style={{ textAlign: 'center', margin: 0 }}>
                       {t('quotes.quoteElsewhere')}
@@ -702,24 +725,36 @@ export default function MatchedRecyclers() {
                     );
                   }
                   if (myOffer.offer_status === 'offered') {
+                    const quoteRate = Number(myOffer.offered_price);
+                    const quotePayout = lotWeight ? Math.round(Number(lotWeight) * quoteRate) : null;
                     return (
-                      <div className="quote-item__actions" style={{ justifyContent: 'center' }}>
-                        <strong>₹{Number(myOffer.offered_price).toLocaleString('en-IN')}</strong>
-                        <button
-                          className="btn btn-accent btn-sm"
-                          disabled={!!offerBusy}
-                          onClick={() => handleOfferAction(myOffer.id, 'accept')}
-                          aria-busy={offerBusy === myOffer.id}
-                        >
-                          {t('quotes.accept')}
-                        </button>
-                        <button
-                          className="btn btn-outline btn-sm"
-                          disabled={!!offerBusy}
-                          onClick={() => handleOfferAction(myOffer.id, 'reject')}
-                        >
-                          {t('quotes.reject')}
-                        </button>
+                      <div className="quote-item__actions" style={{ justifyContent: 'center', flexDirection: 'column', gap: '8px', padding: 'var(--space-2)' }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <span className="text-xs text-muted" style={{ display: 'block' }}>Recycler's Offer</span>
+                          <strong style={{ fontSize: '1.2rem', color: 'var(--color-primary)' }}>₹{quoteRate.toLocaleString('en-IN')} / kg</strong>
+                          {quotePayout != null && (
+                            <div className="text-xs text-muted" style={{ marginTop: '2px' }}>
+                              Estimated payout at this rate: <strong style={{ color: 'var(--color-text)' }}>₹{quotePayout.toLocaleString('en-IN')}</strong>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                          <button
+                            className="btn btn-accent btn-sm"
+                            disabled={!!offerBusy}
+                            onClick={() => handleOfferAction(myOffer.id, 'accept')}
+                            aria-busy={offerBusy === myOffer.id}
+                          >
+                            ✓ Accept Quote
+                          </button>
+                          <button
+                            className="btn btn-outline btn-sm"
+                            disabled={!!offerBusy}
+                            onClick={() => handleOfferAction(myOffer.id, 'reject')}
+                          >
+                            {t('quotes.reject')}
+                          </button>
+                        </div>
                       </div>
                     );
                   }

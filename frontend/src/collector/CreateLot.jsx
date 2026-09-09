@@ -248,15 +248,16 @@ export default function CreateLot() {
     try {
       const r = await getInstantValuation({ category: cat, location: loc, weight: Number(w) });
       setValuation(r.data);
+      if (r.data?.benchmark_available === false) {
+        setValError('');
+      }
     } catch (e) {
-      setValuation(null);
-      setValError(e.message?.includes('No pricing data')
-        ? t('createLot.valuation.noPriceData', { category: cat, location: loc })
-        : t('offline.backendOffline'));
+      setValuation({ benchmark_available: false });
+      setValError('');
     } finally {
       setLoadingVal(false);
     }
-  }, [t]);
+  }, []);
 
   const debouncedFetchVal = useDebounce(
     (w) => fetchValuation(w, category, location),
@@ -319,7 +320,17 @@ export default function CreateLot() {
         collection_lng: collectionLng != null ? Number(collectionLng) : undefined,
         description: descParts.join(' | ') || undefined,
         image_refs: image_refs.filter(Boolean),
+        ai_feedback_id: aiFeedbackId || undefined,
       });
+
+      if (aiFeedbackId && r.data?.lot?.lot_id) {
+        const outcome = classify && category === classify.category ? 'accepted' : 'corrected';
+        updateAiFeedback(aiFeedbackId, {
+          lot_id: r.data.lot.lot_id,
+          human_category: category,
+          outcome,
+        }).catch(() => {});
+      }
 
       if (r.queued) {
         setOfflineSaved(true);
@@ -758,25 +769,61 @@ export default function CreateLot() {
 
             {valError ? (
               <div className="p2-val-card__empty">{valError}</div>
-            ) : valuation ? (
+            ) : valuation && valuation.benchmark_available === false ? (
+              <div className="p2-val-card__empty animate-fade-in" style={{ textAlign: 'center', padding: 'var(--space-4)' }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: 'var(--space-2)' }}>📊</div>
+                <strong style={{ display: 'block', fontSize: '1rem', color: 'var(--color-text)' }}>
+                  Market benchmark unavailable
+                </strong>
+                <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem', marginTop: '4px' }}>
+                  We will collect recycler quotes to establish a market reference.
+                </p>
+              </div>
+            ) : valuation && valuation.estimated_value != null ? (
               <div className="animate-fade-in">
-                <div className="p2-val-hero">
-                  <div className="p2-val-hero__amount font-mono">
-                    {fmtRupees(valuation.estimated_value)}
+                {/* Benchmark breakdown card */}
+                <div style={{ background: 'var(--color-surface-raised, #f8fafc)', padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md, 8px)', border: '1px solid var(--color-border, #e2e8f0)', marginBottom: 'var(--space-3)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem' }}>
+                    <span className="text-muted">Estimated Weight</span>
+                    <strong className="font-mono">{weight} kg</strong>
                   </div>
-                  <div className="p2-val-hero__rate">
-                    {fmtRupees(valuation.unit_price)} / kg
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                    <span className="text-muted">Current Market Rate (Benchmark)</span>
+                    <strong className="font-mono" style={{ color: 'var(--color-primary)' }}>
+                      {fmtRupees(valuation.market_benchmark ?? valuation.unit_price)} / kg
+                    </strong>
                   </div>
                 </div>
 
-                <div className="p2-range">
-                  <div className="p2-range__labels">
-                    <span>{t('createLot.valuation.fairMin')} <strong>{fmtRupees(valuation.market_range_low)}</strong></span>
-                    <span>{t('createLot.valuation.fairMax')} <strong>{fmtRupees(valuation.market_range_high)}</strong></span>
+                {/* Estimated Value hero */}
+                <div className="p2-val-hero" style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                  <div>
+                    <span className="text-xs text-muted" style={{ textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '2px' }}>
+                      Estimated Value
+                    </span>
+                    <div className="p2-val-hero__amount font-mono" style={{ fontSize: '1.8rem', color: 'var(--color-accent)' }}>
+                      {fmtRupees(valuation.estimated_value)}
+                    </div>
                   </div>
+                  {valuation.market_range_low != null && valuation.market_range_high != null && (
+                    <div style={{ textAlign: 'right' }}>
+                      <span className="text-xs text-muted" style={{ display: 'block' }}>Market range</span>
+                      <span className="font-mono" style={{ fontSize: '0.88rem', fontWeight: 600 }}>
+                        {fmtRupees(valuation.market_range_low)}–{fmtRupees(valuation.market_range_high)}/kg
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p2-range" style={{ marginTop: 'var(--space-2)' }}>
                   <div className="p2-range__bar">
                     <div className="p2-range__fill" style={{ width: `${Math.min(100, Math.max(0, rangePercent))}%` }} />
                   </div>
+                </div>
+
+                <div style={{ marginTop: 'var(--space-3)', display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                  <span>ℹ</span>
+                  <span>Final value depends on actual physical weight and accepted recycler's quote.</span>
                 </div>
               </div>
             ) : (
@@ -818,21 +865,30 @@ export default function CreateLot() {
               </div>
 
               <div className="p2-review-cell">
-                <span className="p2-review-cell__label">{t('createLot.review.weight')}</span>
+                <span className="p2-review-cell__label">Estimated Weight</span>
                 <span className="p2-review-cell__val font-mono">{weight} kg</span>
               </div>
 
               <div className="p2-review-cell">
-                <span className="p2-review-cell__label">{t('createLot.review.location')}</span>
-                <span className="p2-review-cell__val">{location}</span>
+                <span className="p2-review-cell__label">Current Market Benchmark</span>
+                <span className="p2-review-cell__val font-mono">
+                  {valuation?.market_benchmark ? `${fmtRupees(valuation.market_benchmark)} / kg` : 'Market discovery'}
+                </span>
               </div>
 
               <div className="p2-review-cell p2-review-cell--highlight">
-                <span className="p2-review-cell__label">{t('createLot.review.estValue')}</span>
+                <span className="p2-review-cell__label">Estimated Value</span>
                 <span className="p2-review-cell__val font-mono" style={{ color: 'var(--color-primary)' }}>
-                  {valuation ? fmtRupees(valuation.estimated_value) : '—'}
+                  {valuation?.estimated_value ? fmtRupees(valuation.estimated_value) : 'Awaiting quotes'}
+                </span>
+                <span className="text-xs text-muted" style={{ display: 'block', marginTop: '3px' }}>
+                  Based on current {location} benchmark
                 </span>
               </div>
+            </div>
+
+            <div className="alert-banner alert-banner--info" style={{ marginTop: 'var(--space-3)', fontSize: '0.85rem' }}>
+              ℹ Final value depends on actual physical scale weight and accepted recycler quote.
             </div>
 
             <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>

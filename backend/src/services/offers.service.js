@@ -25,7 +25,7 @@ export const syncOfferPriceToBoard = async ({ recycler_id, lot_id, offered_price
   const weight = parseFloat(lot.approx_weight_kg);
   if (!weight || weight <= 0) return;
 
-  const perKgRate = Math.round((parseFloat(offered_price) / weight) * 100) / 100;
+  const perKgRate = Math.round(parseFloat(offered_price) * 100) / 100;
   const lat = lot.collection_lat ?? lot.collector_lat ?? lot.recycler_lat ?? null;
   const lng = lot.collection_lng ?? lot.collector_lng ?? lot.recycler_lng ?? null;
   const locStr = lot.operating_location || lot.facility_location || 'Bengaluru';

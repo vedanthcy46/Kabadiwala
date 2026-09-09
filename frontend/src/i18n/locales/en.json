@@ -368,6 +368,9 @@
     "priceCard": "{{category}} — {{location}}"
   },
   "priceDiscovery": {
+    "title": "Price Discovery & Market Rates",
+    "liveTicker": "⚡ Live Commodity Index",
+    "syncPrices": "🔄 Sync Live Market",
     "subtitle": "Live market rates, trends & recycler information",
     "regionalPrices": "Current Market Rates",
     "unitPrice": "Unit Price",
@@ -951,7 +954,8 @@
     "qrScanLabel": "QR scan",
     "qrScanned": "Scanned via QR",
     "qrManual": "Entered manually",
-    "recordComplete": "Verification complete — the recycler has confirmed the physical lot matches its digital record. Payment can now be recorded."
+    "recordComplete": "Verification complete — the recycler has confirmed the physical lot matches its digital record. Payment can now be recorded.",
+    "collectionGps": "Collection GPS Location"
   },
   "checklist": {
     "qrTitle": "Lot QR",

@@ -97,6 +97,20 @@ export default function CollectorLotDetail() {
   const collectionImages = lotImages.filter((image) => image.image_type === 'COLLECTION');
   const confirmationImages = lotImages.filter((image) => image.image_type === 'RECYCLER_CONFIRMATION');
 
+  // 4-Tier pricing traceability calculations
+  const approxWeight = Number(lot?.approx_weight_kg || 0);
+  const rawOfferPrice = acceptedOffer?.offered_price != null
+    ? Number(acceptedOffer.offered_price)
+    : (latestHandover?.quoted_price != null ? Number(latestHandover.quoted_price) : null);
+  const acceptedUnitRate = rawOfferPrice != null ? rawOfferPrice : null;
+  const acceptedTotalEst = acceptedUnitRate != null && approxWeight > 0
+    ? Math.round(acceptedUnitRate * approxWeight)
+    : null;
+  const finalScaleWeight = latestHandover?.weight_kg != null ? Number(latestHandover.weight_kg) : null;
+  const finalSaleValue = latestHandover?.final_price != null ? Number(latestHandover.final_price) : (
+    finalScaleWeight != null && acceptedUnitRate != null ? Math.round(finalScaleWeight * acceptedUnitRate * 100) / 100 : null
+  );
+
   // ── Handover checklist ────────────────────────────────────────────────────
   // Each step is satisfied by either a lot_events entry (preferred — direct
   // evidence) or a fallback inference from lot/handover status fields (for
@@ -497,10 +511,13 @@ export default function CollectorLotDetail() {
                 </div>
               </div>
               <div className="detail-item">
-                <p className="detail-item__label">{t('lotDetail.estimatedValue')}</p>
+                <p className="detail-item__label">{t('lotDetail.estimatedValue')} (Creation)</p>
                 <p className="detail-item__value" style={{ color: 'var(--color-accent)' }}>
                   {fmt(lot.estimated_value)}
                 </p>
+                <span className="text-muted text-xs" style={{ display: 'block', marginTop: '2px' }}>
+                  Benchmark × Est. Weight
+                </span>
               </div>
               <div className="detail-item">
                 <p className="detail-item__label">{t('lotDetail.status')}</p>
@@ -557,6 +574,81 @@ export default function CollectorLotDetail() {
             )}
           </section>
 
+          {/* 4-Tier Pricing & Settlement Lifecycle Card */}
+          <section className="card animate-scale-in" aria-labelledby="pricing-lifecycle-heading" style={{ borderLeft: '4px solid var(--color-primary)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+              <div>
+                <h2 id="pricing-lifecycle-heading" className="detail-section-title" style={{ marginBottom: '2px' }}>
+                  ⚖️ Pricing & Settlement Traceability
+                </h2>
+                <p className="text-muted text-xs" style={{ margin: 0 }}>
+                  Transparent 4-stage valuation from creation benchmark to physical scale settlement
+                </p>
+              </div>
+              <span className="badge badge--muted" style={{ fontSize: 'var(--text-xs)' }}>
+                Audit Protected
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-3)' }}>
+              {/* Stage 1: Estimated Value at Creation */}
+              <div style={{ background: 'var(--color-surface-alt, #f8fafc)', padding: '12px', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '4px' }}>
+                  1. Estimated Value at Creation
+                </div>
+                <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', color: 'var(--color-text-primary)' }}>
+                  {fmt(lot.estimated_value)}
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                  {lot.approx_weight_kg ? `${lot.approx_weight_kg} kg estimated` : 'Market benchmark reference'}
+                </div>
+              </div>
+
+              {/* Stage 2: Accepted Recycler Offer */}
+              <div style={{ background: 'var(--color-surface-alt, #f8fafc)', padding: '12px', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '4px' }}>
+                  2. Accepted Recycler Offer
+                </div>
+                <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', color: acceptedUnitRate ? 'var(--color-primary)' : 'var(--color-text-muted)' }}>
+                  {acceptedUnitRate ? `₹${acceptedUnitRate} / kg` : 'Awaiting quote'}
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                  {acceptedTotalEst ? `Est Payout: ₹${acceptedTotalEst}` : (acceptedOffer ? acceptedOffer.recycler_name : 'No quote accepted yet')}
+                </div>
+              </div>
+
+              {/* Stage 3: Physical Scale Weight */}
+              <div style={{ background: 'var(--color-surface-alt, #f8fafc)', padding: '12px', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '4px' }}>
+                  3. Physical Scale Weight
+                </div>
+                <div style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-bold)', color: finalScaleWeight != null ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                  {finalScaleWeight != null ? `${finalScaleWeight} kg` : 'Pending weigh-in'}
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                  {finalScaleWeight != null && lot.approx_weight_kg
+                    ? `${(finalScaleWeight - Number(lot.approx_weight_kg)) >= 0 ? '+' : ''}${(finalScaleWeight - Number(lot.approx_weight_kg)).toFixed(1)} kg delta from estimate`
+                    : 'Weighed at physical handover'}
+                </div>
+              </div>
+
+              {/* Stage 4: Final Sale Value */}
+              <div style={{ background: finalSaleValue != null ? 'rgba(22, 163, 74, 0.08)' : 'var(--color-surface-alt, #f8fafc)', padding: '12px', borderRadius: '8px', border: finalSaleValue != null ? '1px solid var(--color-success, #16a34a)' : '1px solid var(--color-border)' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: finalSaleValue != null ? 'var(--color-success, #16a34a)' : 'var(--color-text-muted)', marginBottom: '4px', fontWeight: 'var(--weight-semibold)' }}>
+                  4. Final Sale Value
+                </div>
+                <div style={{ fontSize: 'var(--text-xl)', fontWeight: 'var(--weight-bold)', color: finalSaleValue != null ? 'var(--color-success, #16a34a)' : 'var(--color-text-muted)' }}>
+                  {finalSaleValue != null ? fmt(finalSaleValue) : 'Pending handover'}
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                  {finalSaleValue != null && finalScaleWeight != null && acceptedUnitRate != null
+                    ? `${finalScaleWeight} kg × ₹${acceptedUnitRate}/kg`
+                    : 'Final Scale Weight × Accepted Rate'}
+                </div>
+              </div>
+            </div>
+          </section>
+
           {/* Quotes / marketplace card */}
           <section className="card animate-scale-in" aria-labelledby="quotes-heading">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
@@ -571,8 +663,13 @@ export default function CollectorLotDetail() {
                 <div className="confirmed-banner" role="status" style={{ marginBottom: '12px' }}>
                   {t('quotes.acceptedBanner', {
                     recycler: acceptedOffer.recycler_name,
-                    price: fmt(acceptedOffer.offered_price),
+                    price: acceptedUnitRate ? `₹${acceptedUnitRate}/kg` : fmt(acceptedOffer.offered_price),
                   })}
+                  {acceptedTotalEst && (
+                    <span style={{ marginLeft: '8px', opacity: 0.9 }}>
+                      (Est. Payout: ₹{acceptedTotalEst})
+                    </span>
+                  )}
                 </div>
 
                 <div className="card" style={{ background: 'var(--color-surface-alt, #f8fafc)', padding: '16px', borderRadius: '10px', border: '1px solid var(--color-success, #16a34a)' }}>
@@ -614,33 +711,44 @@ export default function CollectorLotDetail() {
                   <span>Recycler contact phone & direct details remain protected until you accept a quote.</span>
                 </div>
                 <ul className="quote-list">
-                  {openOffers.map((o) => (
-                    <li key={o.id} className="quote-item">
-                      <div className="quote-item__main">
-                        <div className="quote-item__name">{o.recycler_name}</div>
-                        <div className="quote-item__status">
-                          <strong>{fmt(o.offered_price)}</strong> {t('quotes.totalOffer')}
+                  {openOffers.map((o) => {
+                    const offerRate = Number(o.offered_price);
+                    const offerEstTotal = approxWeight > 0
+                      ? Math.round(offerRate * approxWeight)
+                      : null;
+                    return (
+                      <li key={o.id} className="quote-item">
+                        <div className="quote-item__main">
+                          <div className="quote-item__name">{o.recycler_name}</div>
+                          <div className="quote-item__status">
+                            <strong>₹{offerRate} / kg</strong> Recycler Offer
+                            {offerEstTotal && (
+                              <span className="text-muted text-xs" style={{ display: 'block' }}>
+                                Est. Payout: {fmt(offerEstTotal)}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <div className="quote-item__actions">
-                        <button
-                          className="btn btn-accent btn-sm"
-                          disabled={!!offerBusy}
-                          onClick={() => handleOfferAction(o.id, 'accept')}
-                          aria-busy={offerBusy === o.id}
-                        >
-                          {t('quotes.accept')}
-                        </button>
-                        <button
-                          className="btn btn-outline btn-sm"
-                          disabled={!!offerBusy}
-                          onClick={() => handleOfferAction(o.id, 'reject')}
-                        >
-                          {t('quotes.reject')}
-                        </button>
-                      </div>
-                    </li>
-                  ))}
+                        <div className="quote-item__actions">
+                          <button
+                            className="btn btn-accent btn-sm"
+                            disabled={!!offerBusy}
+                            onClick={() => handleOfferAction(o.id, 'accept')}
+                            aria-busy={offerBusy === o.id}
+                          >
+                            {t('quotes.accept')}
+                          </button>
+                          <button
+                            className="btn btn-outline btn-sm"
+                            disabled={!!offerBusy}
+                            onClick={() => handleOfferAction(o.id, 'reject')}
+                          >
+                            {t('quotes.reject')}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               </>
             ) : lot?.transaction_status === 'quoted' ? (

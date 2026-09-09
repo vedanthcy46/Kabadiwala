@@ -24,6 +24,7 @@ export const createLotSchema = {
     location: z.string().min(1, 'Location is required for valuation'),
     collection_lat: z.coerce.number().min(-90).max(90).optional(),
     collection_lng: z.coerce.number().min(-180).max(180).optional(),
+    ai_feedback_id: z.coerce.number().int().positive().optional(),
   }),
 };
 

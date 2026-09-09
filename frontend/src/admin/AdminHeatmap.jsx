@@ -5,7 +5,6 @@ import L from 'leaflet';
 if (typeof window !== 'undefined' && !window.L) {
   window.L = L;
 }
-import 'leaflet.heat';
 
 // Region coordinates for quick navigation
 const REGION_CENTERS = {
@@ -26,35 +25,49 @@ function HeatmapLayer({ points, options }) {
   useEffect(() => {
     if (!map || !points || points.length === 0) return;
 
-    // Convert points to [lat, lng, intensity]
-    const heatData = points.map((p) => [p.lat, p.lng, p.intensity || 0.6]);
-
-    if (heatLayerRef.current) {
-      map.removeLayer(heatLayerRef.current);
-      heatLayerRef.current = null;
+    function renderHeat() {
+      if (heatLayerRef.current) {
+        map.removeLayer(heatLayerRef.current);
+        heatLayerRef.current = null;
+      }
+      try {
+        if (typeof L !== 'undefined' && typeof L.heatLayer === 'function') {
+          const heatData = points.map((p) => [p.lat, p.lng, p.intensity || 0.6]);
+          const layer = L.heatLayer(heatData, {
+            radius: options?.radius ?? 28,
+            blur: options?.blur ?? 18,
+            maxZoom: 14,
+            max: 1.0,
+            minOpacity: 0.35,
+            gradient: {
+              0.2: '#3B82F6', // Blue (low density)
+              0.4: '#06B6D4', // Cyan
+              0.6: '#10B981', // Emerald green
+              0.8: '#F59E0B', // Amber
+              1.0: '#EF4444', // Hot red (high density cluster)
+            },
+          });
+          layer.addTo(map);
+          heatLayerRef.current = layer;
+        }
+      } catch (err) {
+        console.warn('Leaflet.heat failed to render:', err);
+      }
     }
 
-    try {
-      if (typeof L.heatLayer === 'function') {
-        const layer = L.heatLayer(heatData, {
-          radius: options?.radius ?? 28,
-          blur: options?.blur ?? 18,
-          maxZoom: 14,
-          max: 1.0,
-          minOpacity: 0.35,
-          gradient: {
-            0.2: '#3B82F6', // Blue (low density)
-            0.4: '#06B6D4', // Cyan
-            0.6: '#10B981', // Emerald green
-            0.8: '#F59E0B', // Amber
-            1.0: '#EF4444', // Hot red (high density cluster)
-          },
-        });
-        layer.addTo(map);
-        heatLayerRef.current = layer;
+    if (typeof L !== 'undefined' && typeof L.heatLayer !== 'function') {
+      if (!document.getElementById('leaflet-heat-script')) {
+        const script = document.createElement('script');
+        script.id = 'leaflet-heat-script';
+        script.src = 'https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js';
+        script.onload = () => renderHeat();
+        document.body.appendChild(script);
+      } else {
+        const scriptEl = document.getElementById('leaflet-heat-script');
+        scriptEl.addEventListener('load', renderHeat, { once: true });
       }
-    } catch (err) {
-      console.warn('Leaflet.heat failed to render:', err);
+    } else {
+      renderHeat();
     }
 
     return () => {

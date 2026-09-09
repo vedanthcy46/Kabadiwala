@@ -11,6 +11,7 @@ export const errorHandler = (err, req, res, next) => {
   }
 
   const { statusCode, message } = error;
+  console.error('[errorHandler]', statusCode, message, err.stack || err);
 
   res.locals.errorMessage = error.message;
 
@@ -20,9 +21,7 @@ export const errorHandler = (err, req, res, next) => {
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   };
 
-  if (process.env.NODE_ENV !== 'development') {
-    logger.error(err);
-  }
+  console.error('[CRITICAL_ERROR]', err);
 
   res.status(statusCode).send(response);
 };

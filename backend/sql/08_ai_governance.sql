@@ -1,13 +1,10 @@
 -- 08_ai_governance.sql
 -- SIH26229 — AI dataset governance views.
---
--- The ai_feedback table records every CV prediction along with the human
--- decision (accepted / corrected / dismissed). These views make the AI
--- training dataset observable: how many labelled samples exist, how many are
--- validated, how accuracy evolves over time, and exactly which rows would be
--- fed into model retraining. Idempotent via CREATE OR REPLACE VIEW.
 
--- Per-category dataset health: sample counts, validation split, accuracy.
+DROP VIEW IF EXISTS v_ai_dataset_samples CASCADE;
+DROP VIEW IF EXISTS v_ai_dataset_trend CASCADE;
+DROP VIEW IF EXISTS v_ai_dataset_summary CASCADE;
+
 CREATE OR REPLACE VIEW v_ai_dataset_summary AS
 SELECT
     ai_predicted_category AS category,
@@ -16,7 +13,8 @@ SELECT
     COUNT(*) FILTER (WHERE outcome = 'accepted')                 AS accepted,
     COUNT(*) FILTER (WHERE outcome = 'corrected')                AS corrected,
     COUNT(*) FILTER (WHERE outcome = 'dismissed')                AS dismissed,
-    COUNT(*) FILTER (WHERE outcome = 'pending')                  AS pending_review,
+    COUNT(*) FILTER (WHERE outcome = 'rejected')                 AS rejected,
+    COUNT(*) FILTER (WHERE outcome IN ('pending', 'review_required')) AS pending_review,
     MAX(created_at)                                              AS last_sample_at,
     ROUND(100.0 * COUNT(*) FILTER (WHERE outcome = 'accepted')
           / NULLIF(COUNT(*) FILTER (WHERE outcome IN ('accepted', 'corrected')), 0), 1)
@@ -25,7 +23,6 @@ FROM ai_feedback
 GROUP BY ai_predicted_category
 ORDER BY samples DESC;
 
--- Monthly dataset growth + accuracy trend (for retraining cadence decisions).
 CREATE OR REPLACE VIEW v_ai_dataset_trend AS
 SELECT
     to_char(date_trunc('month', created_at), 'YYYY-MM')          AS month,
@@ -38,8 +35,6 @@ FROM ai_feedback
 GROUP BY 1
 ORDER BY 1;
 
--- The actual labelled rows that would be exported for retraining: prediction,
--- human correction, outcome, linked lot evidence (image, weight, condition).
 CREATE OR REPLACE VIEW v_ai_dataset_samples AS
 SELECT
     f.id,
@@ -50,7 +45,11 @@ SELECT
     f.ai_confidence,
     f.ai_verdict,
     f.ai_candidates,
+    f.ai_features,
     f.human_category,
+    f.correction_reason,
+    f.reviewed_by,
+    f.reviewed_at,
     f.outcome,
     f.created_at,
     COALESCE(f.human_category, f.ai_predicted_category) AS effective_category,
@@ -59,7 +58,8 @@ SELECT
     m.sub_category,
     m.approx_weight_kg              AS weight_kg,
     m.condition,
-    m.image_ref
+    m.image_ref,
+    m.display_lot_id
 FROM ai_feedback f
 LEFT JOIN collectors c ON c.id = f.collector_id
 LEFT JOIN materials m  ON m.lot_id = f.lot_id;

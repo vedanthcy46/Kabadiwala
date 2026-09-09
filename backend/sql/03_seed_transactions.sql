@@ -26,6 +26,12 @@ INSERT INTO traceability (lot_id, photo_refs, weight_kg, event_timestamp, gps_la
 ('LOT-2026-0003', '["/images/handover0003_1.jpg","/images/handover0003_2.jpg"]', 8.0, '2026-08-03 15:00:00', 13.0284, 77.5199, 'HOV-2026-A1B2C3', FALSE, NULL, 'pending_confirmation'),
 ('LOT-2026-0004', '["/images/handover0004_1.jpg"]', 12.0, '2026-08-04 12:00:00', 13.0358, 77.5970, 'HOV-2026-D4E5F6', TRUE, '2026-08-04 12:30:00', 'confirmed'),
 ('LOT-2026-0005', '["/images/handover0005_1.jpg","/images/handover0005_2.jpg"]', 1.5, '2026-08-05 17:00:00', 12.9698, 77.7500, 'HOV-2026-G7H8I9', TRUE, '2026-08-05 17:20:00', 'confirmed');
--- Note: LOT-2026-0006 intentionally has no traceability row — realistic
--- edge case (handed_over without confirmed traceability record) for
--- testing data-integrity logic.
+-- Seed AI feedback records linked to seed materials
+INSERT INTO ai_feedback (lot_id, collector_id, ai_predicted_category, ai_confidence, ai_verdict, human_category, outcome, created_at) VALUES
+('LOT-2026-0001', 1, 'PCB', 0.9450, 'high', 'PCB', 'accepted', '2026-08-01 09:16:00'),
+('LOT-2026-0002', 1, 'Battery', 0.8820, 'high', 'Battery', 'accepted', '2026-08-02 11:31:00'),
+('LOT-2026-0003', 2, 'PCB', 0.6200, 'medium', 'Cables', 'corrected', '2026-08-03 14:01:00'),
+('LOT-2026-0004', 2, 'CRT', 0.9100, 'high', 'CRT', 'accepted', '2026-08-04 10:46:00'),
+('LOT-2026-0005', 1, 'Motors', 0.7850, 'medium', 'Motors', 'accepted', '2026-08-05 16:21:00'),
+('LOT-2026-0006', 2, 'Plastics', 0.8100, 'medium', NULL, 'pending', '2026-08-06 09:01:00');
+

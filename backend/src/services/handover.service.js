@@ -3,6 +3,7 @@ import { query } from '../db.js';
 import { ApiError } from '../utils/ApiError.js';
 import { calculateInstantValuation } from './valuation.service.js';
 import { uploadLotImage } from './cloudinary.service.js';
+import { updateObservationStatus } from './priceObservation.service.js';
 
 const generateHandoverRef = () => {
   const timestamp = Date.now().toString(36).toUpperCase();
@@ -189,6 +190,10 @@ export const createLot = async (data) => {
     ]
   );
   const lot = result.rows[0];
+
+  if (data.ai_feedback_id) {
+    await query(`UPDATE ai_feedback SET lot_id = $1 WHERE id = $2`, [lot_id, data.ai_feedback_id]).catch(() => {});
+  }
 
   // ── Create the initial transaction record (status: 'quoted') ────────────────
   await query(
@@ -474,28 +479,50 @@ export const confirmHandover = async (reference, recyclerId, extra = {}) => {
     ]
   );
 
-  // ── Update transaction status + recalculate price if weight changed ────────
-  // If the recycler's final weight differs from the collector's estimate,
-  // recalculate quoted_price proportionally (unit_price × final_weight).
-  const txnRow = await query(
-    'SELECT quoted_price, quantity_weight_kg FROM transactions WHERE lot_id = $1 LIMIT 1',
-    [trace.lot_id]
-  );
+  // ── Calculate Final Sale Value = Final Physical Weight × Accepted Unit Price ─
+  const [txnRow, offerRow] = await Promise.all([
+    query(
+      'SELECT quoted_price, quantity_weight_kg FROM transactions WHERE lot_id = $1 LIMIT 1',
+      [trace.lot_id]
+    ),
+    query(
+      `SELECT offered_price FROM offers WHERE lot_id = $1 AND offer_status = 'accepted' ORDER BY id DESC LIMIT 1`,
+      [trace.lot_id]
+    ),
+  ]);
+
   const txn = txnRow.rows[0];
-  let adjustedPrice = null;
-  if (txn && txn.quantity_weight_kg > 0 && finalWeight !== txn.quantity_weight_kg) {
-    const unitPrice = Number(txn.quoted_price) / Number(txn.quantity_weight_kg);
-    adjustedPrice = Math.round(unitPrice * finalWeight * 100) / 100;
+  const offer = offerRow.rows[0];
+  const initialWeight = txn?.quantity_weight_kg ? Number(txn.quantity_weight_kg) : (trace.approx_weight_kg ? Number(trace.approx_weight_kg) : null);
+  
+  let acceptedRate = null;
+  if (offer?.offered_price != null) {
+    acceptedRate = Number(offer.offered_price);
+  } else if (txn?.quoted_price != null) {
+    acceptedRate = Number(txn.quoted_price);
+  }
+
+  let finalSaleValue = null;
+  if (acceptedRate != null && finalWeight != null && finalWeight > 0) {
+    finalSaleValue = Math.round(acceptedRate * finalWeight * 100) / 100;
   }
 
   await query(
     `UPDATE transactions
      SET transaction_status = 'handed_over',
          cg_quantity_weight_kg = $1
-         ${adjustedPrice !== null ? ', quoted_price = $3' : ''}
+         ${finalSaleValue !== null ? ', final_price = $3' : ''}
      WHERE lot_id = $2 AND transaction_status IN ('quoted', 'accepted', 'matched')`,
-    adjustedPrice !== null ? [finalWeight, trace.lot_id, adjustedPrice] : [finalWeight, trace.lot_id]
+    finalSaleValue !== null ? [finalWeight, trace.lot_id, finalSaleValue] : [finalWeight, trace.lot_id]
   );
+
+  // Update observation status to COMPLETED with realized rate & sale value
+  if (finalSaleValue != null) {
+    await updateObservationStatus({ lot_id: trace.lot_id }, 'COMPLETED', {
+      final_rate: acceptedRate ?? (finalWeight > 0 ? finalSaleValue / finalWeight : null),
+      final_sale_value: finalSaleValue,
+    }).catch(() => {});
+  }
 
   // ── Store confirmation photo in lot_images (separate from handover photos) ──
   if (verificationPhoto) {
@@ -513,6 +540,8 @@ export const confirmHandover = async (reference, recyclerId, extra = {}) => {
   await emitEvent(trace.lot_id, 'FINAL_WEIGHT_RECORDED', 'recycler', recyclerId, {
     final_weight_kg: finalWeight,
     approx_weight_kg: trace.weight_kg ?? null,
+    accepted_rate: acceptedRate,
+    final_sale_value: finalSaleValue,
     handover_reference_number: reference,
     scan_verified: extra.scan_verified ?? false,
   }, confirmGps);

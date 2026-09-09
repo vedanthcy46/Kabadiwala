@@ -231,37 +231,58 @@ export const getPriceAnalytics = async (category, location = 'Bengaluru', days =
   const totalQuoteCount = parseInt(obsData.total_quotes, 10) || 0;
   const activeRecyclersCount = parseInt(recData.active_recyclers, 10) || 0;
 
-  // Composite dynamic benchmark rate:
-  // If recycler quotes exist, average them into the benchmark index
-  let blendedAvgRate = null;
-  if (totalQuoteCount > 0) {
-    blendedAvgRate = Math.round(parseFloat(obsData.avg_quoted_rate) * 100) / 100;
-  } else if (activeRecyclersCount > 0) {
-    blendedAvgRate = Math.round(parseFloat(recData.avg_recycler_rate) * 100) / 100;
-  } else if (bench.buying_price != null) {
-    blendedAvgRate = parseFloat(bench.buying_price);
+  // Anomaly / outlier protection: check if quotes contain abnormal spikes (e.g. ₹500/kg when median is ₹53/kg)
+  const medianQuote = parseFloat(obsData.median_quoted_rate) || parseFloat(recData.median_recycler_rate) || (bench.buying_price ? parseFloat(bench.buying_price) : null);
+
+  let nonOutlierAvgQuote = totalQuoteCount > 0 ? parseFloat(obsData.avg_quoted_rate) : (activeRecyclersCount > 0 ? parseFloat(recData.avg_recycler_rate) : null);
+
+  if (medianQuote && totalQuoteCount > 2) {
+    // Only consider quotes within 40% of median for benchmark updating
+    const trimmedRes = await query(
+      `SELECT AVG(quoted_rate) AS trimmed_avg, COUNT(*) AS trimmed_count
+       FROM price_observations
+       WHERE ${categoryConditions}
+         AND location = $2
+         AND observed_at >= CURRENT_DATE - ($3 || ' days')::INTERVAL
+         AND quoted_rate BETWEEN $4 AND $5`,
+      [category, resolvedLoc, days, medianQuote * 0.6, medianQuote * 1.4]
+    );
+    if (trimmedRes.rows[0]?.trimmed_count > 0 && trimmedRes.rows[0].trimmed_avg != null) {
+      nonOutlierAvgQuote = parseFloat(trimmedRes.rows[0].trimmed_avg);
+    }
   }
 
-  const minPrice = Math.min(
+  // Authoritative Market Benchmark Rate
+  const baseBench = bench.buying_price != null ? parseFloat(bench.buying_price) : null;
+  const blendedAvgRate = baseBench != null ? baseBench : (nonOutlierAvgQuote != null ? Math.round(nonOutlierAvgQuote * 100) / 100 : null);
+
+  // Filter outlier observation bounds relative to benchmark (normal ±12% trading range)
+  const benchVal = blendedAvgRate || 350;
+  const rawMin = Math.min(
     ...[
       obsData.min_quoted_rate,
       recData.min_recycler_rate,
-      bench.market_range_low ?? bench.buying_price,
+      bench.market_range_low ?? benchVal,
     ].filter(n => n != null).map(Number)
   );
 
-  const maxPrice = Math.max(
+  const rawMax = Math.max(
     ...[
       obsData.max_quoted_rate,
       recData.max_recycler_rate,
-      bench.market_range_high ?? bench.buying_price,
+      bench.market_range_high ?? benchVal,
     ].filter(n => n != null).map(Number)
   );
 
-  const qAvg = parseFloat(obsData.avg_quoted_rate) || (parseFloat(recData.avg_recycler_rate) || blendedAvgRate);
-  const qMed = parseFloat(obsData.median_quoted_rate) || parseFloat(recData.median_recycler_rate) || blendedAvgRate;
-  const compAvg = parseFloat(obsData.avg_completed_rate) || null;
+  const minPrice = isFinite(rawMin) ? Math.max(Math.round(benchVal * 0.88 * 100) / 100, Math.round(rawMin * 100) / 100) : Math.round(benchVal * 0.9 * 100) / 100;
+  const maxPrice = isFinite(rawMax) ? Math.min(Math.round(benchVal * 1.12 * 100) / 100, Math.round(rawMax * 100) / 100) : Math.round(benchVal * 1.1 * 100) / 100;
+
+  const qAvg = totalQuoteCount > 0 ? (parseFloat(obsData.avg_quoted_rate) || blendedAvgRate) : (activeRecyclersCount > 0 ? (parseFloat(recData.avg_recycler_rate) || blendedAvgRate) : Math.round(benchVal * 0.955 * 100) / 100);
+  const qMed = totalQuoteCount > 0 ? (parseFloat(obsData.median_quoted_rate) || blendedAvgRate) : (activeRecyclersCount > 0 ? (parseFloat(recData.median_recycler_rate) || blendedAvgRate) : Math.round(benchVal * 0.97 * 100) / 100);
   const compCount = parseInt(obsData.completed_count, 10) || 0;
+  const compAvg = (compCount > 0 && parseFloat(obsData.avg_completed_rate) > 0)
+    ? Math.round(parseFloat(obsData.avg_completed_rate) * 100) / 100
+    : Math.round(benchVal * 0.94 * 100) / 100;
 
   return {
     category,
@@ -288,8 +309,8 @@ export const getPriceAnalytics = async (category, location = 'Bengaluru', days =
     benchmark_signal: {
       label: 'City Market Benchmark Signal',
       benchmark_rate: blendedAvgRate != null ? Math.round(blendedAvgRate * 100) / 100 : null,
-      market_range_low: bench.market_range_low ? Number(bench.market_range_low) : null,
-      market_range_high: bench.market_range_high ? Number(bench.market_range_high) : null,
+      market_range_low: minPrice,
+      market_range_high: maxPrice,
     },
 
     // Top-level aliases for backward compatibility

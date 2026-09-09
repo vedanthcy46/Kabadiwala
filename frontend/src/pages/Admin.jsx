@@ -21,7 +21,7 @@ import { Doughnut, Bar } from 'react-chartjs-2';
 import {
   adminLogin, getAdminSummary, getAllRecyclers,
   adminVerifyRecycler, getPriceSources, getAdminLots, getAdminAuditEvents,
-  getAiDatasetSummary, getAiDatasetSamples, getAnomalies, getAiDatasetExportUrl,
+  getAiDatasetSummary, getAiDatasetSamples, getAnomalies, getAiDatasetExportUrl, updateAiFeedback,
   getAdminAnalytics, getAdminHeatmap,
 } from '../api/client';
 import AdminHeatmap from '../admin/AdminHeatmap';
@@ -172,6 +172,13 @@ export default function Admin() {
   const [verifyBusy, setVerifyBusy] = useState(null);
   const [aiSummary, setAiSummary] = useState(null);
   const [aiSamples, setAiSamples] = useState([]);
+  const [aiOutcomeFilter, setAiOutcomeFilter] = useState('all');
+  const [aiCategoryFilter, setAiCategoryFilter] = useState('all');
+  const [inspectSample, setInspectSample] = useState(null);
+  const [correctionSample, setCorrectionSample] = useState(null);
+  const [correctingCat, setCorrectingCat] = useState('');
+  const [correctionReasonInput, setCorrectionReasonInput] = useState('');
+  const [aiActionBusy, setAiActionBusy] = useState(null);
 
   useEffect(() => { setAuthed(getSession()?.role === 'admin'); }, []);
 
@@ -206,7 +213,7 @@ export default function Admin() {
         getAdminLots(),
         getAdminAuditEvents(),
         getAiDatasetSummary(),
-        getAiDatasetSamples({ limit: 12 }),
+        getAiDatasetSamples({ limit: 100 }),
         getAnomalies().catch(() => ({ anomalies: [] })),
         getAdminAnalytics().catch(() => ({ data: null })),
         getAdminHeatmap().catch(() => ({ data: null })),
@@ -226,6 +233,74 @@ export default function Admin() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleDatasetAction(sampleId, outcome, humanCategory = null, reason = null) {
+    setAiActionBusy(sampleId);
+    setError('');
+    try {
+      await updateAiFeedback(sampleId, {
+        outcome,
+        human_category: humanCategory,
+        correction_reason: reason,
+        reviewed_by: 'Admin Governance',
+      });
+      flash(
+        outcome === 'accepted' ? 'Sample accepted & validated into training dataset' :
+        outcome === 'corrected' ? 'Sample correction submitted' :
+        outcome === 'rejected' ? 'Sample rejected from training dataset' :
+        'Sample status updated'
+      );
+      setCorrectionSample(null);
+      setInspectSample(null);
+      setCorrectionReasonInput('');
+      const [aiSumRes, aiSampRes] = await Promise.all([
+        getAiDatasetSummary(),
+        getAiDatasetSamples({ limit: 100 }),
+      ]);
+      setAiSummary(aiSumRes.data);
+      setAiSamples(Array.isArray(aiSampRes.data?.samples) ? aiSampRes.data.samples : []);
+    } catch (err) {
+      setError(err.message || 'Failed to update sample status');
+    } finally {
+      setAiActionBusy(null);
+    }
+  }
+
+  function normalizeCategoryOption(cat) {
+    if (!cat) return 'PCB';
+    const raw = String(cat).trim();
+    const map = {
+      'battery': 'Battery',
+      'batteries': 'Battery',
+      'pcb': 'PCB',
+      'pcbs': 'PCB',
+      'crt': 'CRT',
+      'monitors': 'CRT',
+      'lcd': 'LCD',
+      'lcds': 'LCD',
+      'cables': 'Cables',
+      'cable': 'Cables',
+      'motors': 'Motors',
+      'motor': 'Motors',
+      'plastics': 'Plastics',
+      'plastic': 'Plastics',
+      'other': 'Other',
+    };
+    return map[raw.toLowerCase()] || raw;
+  }
+
+  function openCorrectionModal(sample) {
+    setCorrectionSample(sample);
+    const cat = sample.human_category || sample.effective_category || sample.ai_predicted_category || 'PCB';
+    setCorrectingCat(normalizeCategoryOption(cat));
+    setCorrectionReasonInput(sample.correction_reason || '');
+    window.scrollTo({ top: 100, behavior: 'smooth' });
+  }
+
+  function openInspectModal(sample) {
+    setInspectSample(sample);
+    window.scrollTo({ top: 100, behavior: 'smooth' });
   }
 
   useEffect(() => {
@@ -312,6 +387,12 @@ export default function Admin() {
     if (statusFilter === 'rejected') {
       return r.account_status === 'REJECTED' || r.authorization_status === 'unauthorized';
     }
+    return true;
+  });
+
+  const filteredAiSamples = aiSamples.filter((s) => {
+    if (aiOutcomeFilter !== 'all' && (s.outcome || 'pending') !== aiOutcomeFilter) return false;
+    if (aiCategoryFilter !== 'all' && s.ai_predicted_category !== aiCategoryFilter && s.human_category !== aiCategoryFilter) return false;
     return true;
   });
 
@@ -980,7 +1061,21 @@ export default function Admin() {
         </div>
       ) : tab === 'dataset' ? (
         <div className="animate-fade-in">
-          <p className="quote-section__empty">{t('admin.dataset.desc')}</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '700' }}>🤖 AI Dataset Validation Workspace</h3>
+              <p className="text-muted" style={{ margin: '4px 0 0 0', fontSize: '0.9rem' }}>
+                Human-in-the-loop validation workspace for e-waste image classification and retraining datasets.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={handleExportCsv}
+            >
+              📥 {t('admin.dataset.exportCsv')}
+            </button>
+          </div>
 
           <div className="admin-stat-grid">
             <div className="admin-stat card">
@@ -1003,8 +1098,54 @@ export default function Admin() {
             </div>
           </div>
 
+          {/* Filter Bar */}
+          <div className="admin-filter-bar card" style={{ padding: 'var(--space-3) var(--space-4)', display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', alignItems: 'center', marginTop: 'var(--space-4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="admin-filter-bar__label">Validation Status:</span>
+              <select
+                className="form-input"
+                style={{ width: 'auto', padding: '4px 10px', fontSize: '0.85rem' }}
+                value={aiOutcomeFilter}
+                onChange={(e) => setAiOutcomeFilter(e.target.value)}
+              >
+                <option value="all">All Outcomes ({aiSamples.length})</option>
+                <option value="pending">⏳ Pending Review</option>
+                <option value="accepted">✅ Accepted</option>
+                <option value="corrected">✏️ Corrected</option>
+                <option value="rejected">❌ Rejected</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="admin-filter-bar__label">Category:</span>
+              <select
+                className="form-input"
+                style={{ width: 'auto', padding: '4px 10px', fontSize: '0.85rem' }}
+                value={aiCategoryFilter}
+                onChange={(e) => setAiCategoryFilter(e.target.value)}
+              >
+                <option value="all">All Categories</option>
+                <option value="PCB">PCB (Printed Circuit Boards)</option>
+                <option value="Battery">Battery</option>
+                <option value="CRT">CRT Monitors</option>
+                <option value="LCD">LCD Screens</option>
+                <option value="Cables">Cables & Wires</option>
+                <option value="Motors">Motors & Magnets</option>
+                <option value="Plastics">Mixed E-Plastics</option>
+                <option value="Other">Other E-Waste</option>
+              </select>
+            </div>
+
+            <div style={{ marginLeft: 'auto', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+              Showing <strong>{filteredAiSamples.length}</strong> of <strong>{aiSamples.length}</strong> samples
+            </div>
+          </div>
+
           {(aiSummary?.categories?.length || 0) > 0 && (
             <div className="admin-table-wrap card" style={{ marginTop: 'var(--space-4)' }}>
+              <div style={{ padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-border)', fontWeight: '600', fontSize: '0.9rem' }}>
+                📊 Accuracy & Distribution by E-Waste Category
+              </div>
               <table className="admin-table">
                 <thead>
                   <tr>
@@ -1020,11 +1161,11 @@ export default function Admin() {
                   {aiSummary.categories.map((c) => (
                     <tr key={c.category}>
                       <td><span className="admin-table__name">{c.category}</span></td>
-                      <td>{c.accepted}</td>
-                      <td>{c.corrected}</td>
+                      <td><span style={{ color: '#15803d', fontWeight: '600' }}>{c.accepted}</span></td>
+                      <td><span style={{ color: '#c2410c', fontWeight: '600' }}>{c.corrected}</span></td>
                       <td>{c.dismissed}</td>
-                      <td>{c.pending_review}</td>
-                      <td>{c.accuracy_pct != null ? `${c.accuracy_pct}%` : '—'}</td>
+                      <td><span style={{ color: '#b45309', fontWeight: '600' }}>{c.pending_review}</span></td>
+                      <td><strong>{c.accuracy_pct != null ? `${c.accuracy_pct}%` : '—'}</strong></td>
                     </tr>
                   ))}
                 </tbody>
@@ -1032,41 +1173,181 @@ export default function Admin() {
             </div>
           )}
 
-          {aiSamples.length > 0 && (
-            <div className="admin-table-wrap card" style={{ marginTop: 'var(--space-4)' }}>
+          <div className="admin-table-wrap card" style={{ marginTop: 'var(--space-4)' }}>
+            <div style={{ padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-border)', fontWeight: '600', fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>🔍 Classification Samples & Human Validation Records</span>
+              <span className="text-muted" style={{ fontSize: '0.8rem', fontWeight: 'normal' }}>
+                Click action buttons to accept, correct, or audit records
+              </span>
+            </div>
+            {filteredAiSamples.length === 0 ? (
+              <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                No dataset samples found matching the selected filters.
+              </div>
+            ) : (
               <table className="admin-table">
                 <thead>
                   <tr>
                     <th>{t('admin.dataset.when')}</th>
-                    <th>{t('admin.dataset.lot')}</th>
+                    <th>Lot / Collector</th>
                     <th>{t('admin.dataset.aiPredicted')}</th>
                     <th>{t('admin.dataset.humanLabel')}</th>
                     <th>{t('admin.dataset.outcome')}</th>
+                    <th>Audit Details</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {aiSamples.map((s) => (
-                    <tr key={s.id}>
-                      <td>{fmtDate(s.created_at)}</td>
-                      <td className="font-mono">{s.lot_id || '—'}</td>
-                      <td>{s.ai_predicted_category}<span className="admin-table__sub">{Math.round(Number(s.ai_confidence || 0) * 100)}%</span></td>
-                      <td>{s.human_category || s.effective_category || '—'}</td>
-                      <td><span className={`dataset-outcome dataset-outcome--${s.outcome || 'pending'}`}>{s.outcome || 'pending'}</span></td>
-                    </tr>
-                  ))}
+                  {filteredAiSamples.map((s) => {
+                    const outcome = s.outcome || 'pending';
+                    const isBusy = aiActionBusy === s.id;
+                    return (
+                      <tr key={s.id} className={outcome === 'pending' ? 'admin-row--pending' : ''}>
+                        <td>
+                          {fmtDate(s.created_at)}
+                          <span className="admin-table__sub" style={{ fontSize: '0.75rem' }}>ID #{s.id}</span>
+                        </td>
+                        <td>
+                          <span className="font-mono" style={{ fontWeight: '600', display: 'block' }}>
+                            {s.display_lot_id || s.lot_id || `Sample #${s.id}`}
+                          </span>
+                          {s.collector_name && <span className="admin-table__sub">👤 {s.collector_name}</span>}
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: '600' }}>{s.ai_predicted_category}</span>
+                          <span className="admin-table__sub">
+                            Conf: <strong>{Math.round(Number(s.ai_confidence || 0) * 100)}%</strong>
+                          </span>
+                        </td>
+                        <td>
+                          {s.human_category || s.effective_category ? (
+                            <span style={{ fontWeight: '600', color: (s.human_category || s.effective_category) !== s.ai_predicted_category ? '#c2410c' : '#15803d' }}>
+                              {s.human_category || s.effective_category}
+                            </span>
+                          ) : (
+                            <span style={{ fontWeight: '600', color: '#15803d' }}>
+                              {s.ai_predicted_category}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`dataset-outcome dataset-outcome--${outcome}`}>
+                            {outcome === 'accepted' && '✅ Accepted'}
+                            {outcome === 'corrected' && '✏️ Corrected'}
+                            {outcome === 'pending' && '⏳ Pending'}
+                            {outcome === 'rejected' && '❌ Rejected'}
+                            {outcome === 'review_required' && '⚠️ Review Required'}
+                            {!['accepted', 'corrected', 'pending', 'rejected', 'review_required'].includes(outcome) && outcome}
+                          </span>
+                        </td>
+                        <td style={{ maxWidth: '240px' }}>
+                          {s.correction_reason ? (
+                            <div style={{ fontSize: '0.8rem', lineHeight: '1.3' }}>
+                              <span style={{ fontStyle: 'italic', display: 'block', color: 'var(--color-text-primary)' }}>
+                                "{s.correction_reason}"
+                              </span>
+                              {s.reviewed_by && (
+                                <span className="admin-table__sub">
+                                  By {s.reviewed_by} {s.reviewed_at ? `on ${fmtDate(s.reviewed_at)}` : ''}
+                                </span>
+                              )}
+                            </div>
+                          ) : s.reviewed_by ? (
+                            <span className="admin-table__sub">Reviewed by {s.reviewed_by}</span>
+                          ) : (
+                            <span className="text-muted" style={{ fontSize: '0.8rem' }}>Unreviewed</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'inline-flex', gap: '4px' }}>
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                              onClick={() => openInspectModal(s)}
+                              title="Inspect sample details & audit log"
+                            >
+                              👁 View
+                            </button>
+                            {outcome === 'pending' && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline"
+                                  style={{ padding: '2px 8px', fontSize: '0.75rem', borderColor: '#b45309', color: '#b45309' }}
+                                  onClick={() => openCorrectionModal(s)}
+                                  disabled={isBusy}
+                                  title="Correct classification label"
+                                >
+                                  ✏️ Correct
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  style={{ padding: '2px 8px', fontSize: '0.75rem', backgroundColor: '#16a34a', borderColor: '#16a34a' }}
+                                  onClick={() => handleDatasetAction(s.id, 'accepted')}
+                                  disabled={isBusy}
+                                  title="Accept AI prediction & validate into training set"
+                                >
+                                  {isBusy ? <LoadingSpinner size="sm" /> : '✅ Accept'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline"
+                                  style={{ padding: '2px 8px', fontSize: '0.75rem', borderColor: '#dc2626', color: '#dc2626' }}
+                                  onClick={() => handleDatasetAction(s.id, 'rejected', null, 'Rejected by admin')}
+                                  disabled={isBusy}
+                                  title="Reject sample from training set"
+                                >
+                                  ❌ Reject
+                                </button>
+                              </>
+                            )}
+                            {outcome === 'corrected' && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline"
+                                  style={{ padding: '2px 8px', fontSize: '0.75rem', borderColor: '#b45309', color: '#b45309' }}
+                                  onClick={() => openCorrectionModal(s)}
+                                  disabled={isBusy}
+                                  title="Edit correction label or reason"
+                                >
+                                  ✏️ Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  style={{ padding: '2px 8px', fontSize: '0.75rem', backgroundColor: '#16a34a', borderColor: '#16a34a' }}
+                                  onClick={() => handleDatasetAction(s.id, 'accepted', s.human_category || s.effective_category || s.ai_predicted_category, s.correction_reason)}
+                                  disabled={isBusy}
+                                  title="Approve corrected label into retraining set"
+                                >
+                                  {isBusy ? <LoadingSpinner size="sm" /> : '✅ Approve'}
+                                </button>
+                              </>
+                            )}
+                            {(outcome === 'accepted' || outcome === 'rejected') && (
+                              <button
+                                type="button"
+                                className="btn btn-outline"
+                                style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                                onClick={() => handleDatasetAction(s.id, 'pending')}
+                                disabled={isBusy}
+                                title="Reopen for re-review"
+                              >
+                                ↩️ Reopen
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
-            </div>
-          )}
-
-          <button
-            type="button"
-            className="btn btn-outline"
-            style={{ marginTop: 'var(--space-4)' }}
-            onClick={handleExportCsv}
-          >
-            {t('admin.dataset.exportCsv')}
-          </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="animate-fade-in">
@@ -1097,6 +1378,142 @@ export default function Admin() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Inspection & Audit Modal ── */}
+      {inspectSample && (
+        <div className="modal-backdrop" onClick={() => setInspectSample(null)}>
+          <div className="modal-content card animate-scale-in" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px', width: '90%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-3)' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700' }}>
+                👁 Dataset Sample Inspection — ID #{inspectSample.id}
+              </h3>
+              <button type="button" className="btn-icon" onClick={() => setInspectSample(null)} aria-label="Close">×</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
+              <div>
+                <span className="admin-stat__label">AI Predicted Category</span>
+                <div style={{ fontSize: '1.2rem', fontWeight: '700', color: 'var(--color-primary)' }}>
+                  {inspectSample.ai_predicted_category}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                  Confidence: <strong>{Math.round(Number(inspectSample.ai_confidence || 0) * 100)}%</strong>
+                </div>
+              </div>
+
+              <div>
+                <span className="admin-stat__label">Validated Human Label</span>
+                <div style={{ fontSize: '1.2rem', fontWeight: '700', color: inspectSample.human_category && inspectSample.human_category !== inspectSample.ai_predicted_category ? '#c2410c' : '#15803d' }}>
+                  {inspectSample.human_category || inspectSample.effective_category || '—'}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                  Outcome: <span className={`dataset-outcome dataset-outcome--${inspectSample.outcome || 'pending'}`}>{inspectSample.outcome || 'pending'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--color-surface-alt, #f8fafc)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)', fontSize: '0.88rem' }}>
+              <div style={{ fontWeight: '600', marginBottom: '4px' }}>📋 Sample Context & Metadata</div>
+              <div>• <strong>Lot Reference:</strong> {inspectSample.display_lot_id || inspectSample.lot_id || `Scan Sample #${inspectSample.id} (Unlinked)`}</div>
+              {inspectSample.collector_name && <div>• <strong>Collector:</strong> {inspectSample.collector_name}</div>}
+              <div>• <strong>Recorded Date:</strong> {fmtDate(inspectSample.created_at)}</div>
+              {inspectSample.correction_reason && (
+                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--color-border)' }}>
+                  • <strong>Correction Reason:</strong> <span style={{ fontStyle: 'italic' }}>"{inspectSample.correction_reason}"</span>
+                </div>
+              )}
+              {inspectSample.reviewed_by && (
+                <div>• <strong>Reviewed By:</strong> {inspectSample.reviewed_by} {inspectSample.reviewed_at ? `on ${fmtDate(inspectSample.reviewed_at)}` : ''}</div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+              <button type="button" className="btn btn-outline" onClick={() => setInspectSample(null)}>Close</button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ borderColor: '#b45309', color: '#b45309' }}
+                onClick={() => {
+                  const s = inspectSample;
+                  setInspectSample(null);
+                  openCorrectionModal(s);
+                }}
+              >
+                ✏️ Correct Label
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ backgroundColor: '#16a34a', borderColor: '#16a34a' }}
+                onClick={() => {
+                  handleDatasetAction(inspectSample.id, 'accepted', inspectSample.human_category, inspectSample.correction_reason);
+                }}
+              >
+                ✅ Accept & Validate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Correction Modal ── */}
+      {correctionSample && (
+        <div className="modal-backdrop" onClick={() => setCorrectionSample(null)}>
+          <div className="modal-content card animate-scale-in" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px', width: '90%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-3)' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700' }}>
+                ✏️ Human Label Correction — Sample #{correctionSample.id}
+              </h3>
+              <button type="button" className="btn-icon" onClick={() => setCorrectionSample(null)} aria-label="Close">×</button>
+            </div>
+
+            <p style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', marginBottom: 'var(--space-4)' }}>
+              AI prediction was <strong>{correctionSample.ai_predicted_category}</strong> ({Math.round(Number(correctionSample.ai_confidence || 0) * 100)}% conf). Select the correct category and provide justification.
+            </p>
+
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <label className="form-label">Correct E-Waste Category</label>
+              <select
+                className="form-input"
+                value={correctingCat}
+                onChange={(e) => setCorrectingCat(e.target.value)}
+              >
+                <option value="PCB">PCB (Printed Circuit Boards)</option>
+                <option value="Battery">Battery (Li-ion, Lead-Acid)</option>
+                <option value="CRT">CRT Glass / Monitors</option>
+                <option value="LCD">LCD / LED Screen Panels</option>
+                <option value="Cables">Cables, Wires & Wiring Harnesses</option>
+                <option value="Motors">Motors, Transformers & Magnets</option>
+                <option value="Plastics">Mixed E-Plastics</option>
+                <option value="Other">Other E-Waste</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <label className="form-label">Correction Reason / Justification</label>
+              <textarea
+                className="form-input"
+                rows="3"
+                placeholder="e.g., Image contains Lithium-ion battery pack mistakenly identified as PCB due to casing design."
+                value={correctionReasonInput}
+                onChange={(e) => setCorrectionReasonInput(e.target.value)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+              <button type="button" className="btn btn-outline" onClick={() => setCorrectionSample(null)}>Cancel</button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => handleDatasetAction(correctionSample.id, 'corrected', correctingCat, correctionReasonInput)}
+                disabled={aiActionBusy === correctionSample.id}
+              >
+                {aiActionBusy === correctionSample.id ? <LoadingSpinner size="sm" /> : 'Save & Submit Correction'}
+              </button>
+            </div>
           </div>
         </div>
       )}
