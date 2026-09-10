@@ -123,6 +123,47 @@ export const listPriceSources = async () => {
   return result.rows;
 };
 
+export const createPriceSource = async (data) => {
+  const { source_name, source_type, source_url, description } = data;
+  const result = await query(
+    `INSERT INTO price_sources (source_name, source_type, source_url, description, last_collected_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     RETURNING *`,
+    [source_name, source_type, source_url, description]
+  );
+  return result.rows[0];
+};
+
+export const updatePriceSource = async (id, data) => {
+  const { source_name, source_type, source_url, description } = data;
+  const existing = await query('SELECT id FROM price_sources WHERE id = $1', [id]);
+  if (existing.rows.length === 0) {
+    throw new ApiError(404, 'Price source not found');
+  }
+
+  const result = await query(
+    `UPDATE price_sources
+     SET source_name = $1,
+         source_type = $2,
+         source_url = $3,
+         description = $4
+     WHERE id = $5
+     RETURNING *`,
+    [source_name, source_type, source_url, description, id]
+  );
+  return result.rows[0];
+};
+
+export const deletePriceSource = async (id) => {
+  const existing = await query('SELECT id FROM price_sources WHERE id = $1', [id]);
+  if (existing.rows.length === 0) {
+    throw new ApiError(404, 'Price source not found');
+  }
+
+  await query('DELETE FROM price_sources WHERE id = $1', [id]);
+  return { success: true };
+};
+
 /** Platform-wide lot and transaction register for operations and dispute review. */
 export const listLotRegister = async () => {
   const result = await query(

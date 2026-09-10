@@ -160,73 +160,95 @@ export const updateObservationStatus = async (filter, status, extra = {}) => {
  * @param {number} days
  */
 export const getPriceAnalytics = async (category, location = 'Bengaluru', days = 90) => {
+  const { getCategoryAliases } = await import('../utils/categoryAliases.js');
+  const { resolvePricingLocation, BENCHMARK_HUBS } = await import('./valuation.service.js');
+
+  const aliases = getCategoryAliases(category);
   const resolvedLoc = resolvePricingLocation(location);
 
-  const categoryConditions = `
-    (
-      material_category = $1 
-      OR ($1 = 'Plastic' AND material_category IN ('Mixed Plastic', 'Plastics', 'Mixed Plastics'))
-      OR ($1 = 'Mixed Plastic' AND material_category = 'Plastic')
-      OR ($1 = 'Motor' AND material_category IN ('Motor/Magnet Assembly', 'Motors'))
-      OR ($1 = 'Motor/Magnet Assembly' AND material_category = 'Motor')
-      OR ($1 = 'LCD' AND material_category IN ('LCD Panel', 'LCD Panels'))
-      OR ($1 = 'LCD Panel' AND material_category = 'LCD')
-      OR ($1 = 'CRT' AND material_category = 'CRTs')
-      OR ($1 = 'Battery' AND material_category = 'Batteries')
-      OR ($1 = 'PCB' AND material_category = 'PCBs')
-      OR ($1 = 'Cable' AND material_category = 'Cables')
-    )
-  `;
+  // Helper: try an analytics query for a specific city
+  const tryCity = async (loc) => {
+    // 1. Quoted price analytics from price_observations
+    const obsRes = await query(
+      `SELECT
+         COUNT(*) AS total_quotes,
+         COALESCE(AVG(quoted_rate), 0) AS avg_quoted_rate,
+         MIN(quoted_rate) AS min_quoted_rate,
+         MAX(quoted_rate) AS max_quoted_rate,
+         PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY quoted_rate) AS median_quoted_rate,
+         COALESCE(AVG(CASE WHEN quote_status = 'COMPLETED' AND final_rate IS NOT NULL THEN final_rate END), 0) AS avg_completed_rate,
+         COUNT(CASE WHEN quote_status = 'COMPLETED' THEN 1 END) AS completed_count
+       FROM price_observations
+       WHERE material_category = ANY($1::text[])
+         AND location = $2
+         AND observed_at >= CURRENT_DATE - ($3 || ' days')::INTERVAL`,
+      [aliases, loc, String(days)]
+    );
 
-  // 1. Quoted price analytics from price_observations
-  const obsRes = await query(
-    `SELECT 
-       COUNT(*) AS total_quotes,
-       COALESCE(AVG(quoted_rate), 0) AS avg_quoted_rate,
-       MIN(quoted_rate) AS min_quoted_rate,
-       MAX(quoted_rate) AS max_quoted_rate,
-       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY quoted_rate) AS median_quoted_rate,
-       COALESCE(AVG(CASE WHEN quote_status = 'COMPLETED' AND final_rate IS NOT NULL THEN final_rate END), 0) AS avg_completed_rate,
-       COUNT(CASE WHEN quote_status = 'COMPLETED' THEN 1 END) AS completed_count
-     FROM price_observations
-     WHERE ${categoryConditions}
-       AND location = $2
-       AND observed_at >= CURRENT_DATE - ($3 || ' days')::INTERVAL`,
-    [category, resolvedLoc, days]
-  );
+    // 2. Recycler custom rates from prices table
+    const recyclerRatesRes = await query(
+      `SELECT
+         COUNT(DISTINCT recycler_id) AS active_recyclers,
+         COALESCE(AVG(buying_price), 0) AS avg_recycler_rate,
+         MIN(buying_price) AS min_recycler_rate,
+         MAX(buying_price) AS max_recycler_rate,
+         PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY buying_price) AS median_recycler_rate
+       FROM prices
+       WHERE material_category = ANY($1::text[])
+         AND location = $2
+         AND recycler_id IS NOT NULL`,
+      [aliases, loc]
+    );
 
-  const obsData = obsRes.rows[0] || {};
+    // 3. Benchmark index rate (recycler_id IS NULL)
+    const benchRes = await query(
+      `SELECT buying_price, market_range_low, market_range_high
+       FROM prices
+       WHERE material_category = ANY($1::text[])
+         AND location = $2
+         AND recycler_id IS NULL
+       ORDER BY price_date DESC, id DESC
+       LIMIT 1`,
+      [aliases, loc]
+    );
 
-  // 2. Recycler custom rates from prices table
-  const recyclerRatesRes = await query(
-    `SELECT 
-       COUNT(DISTINCT recycler_id) AS active_recyclers,
-       COALESCE(AVG(buying_price), 0) AS avg_recycler_rate,
-       MIN(buying_price) AS min_recycler_rate,
-       MAX(buying_price) AS max_recycler_rate,
-       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY buying_price) AS median_recycler_rate
-     FROM prices
-     WHERE ${categoryConditions}
-       AND location = $2
-       AND recycler_id IS NOT NULL`,
-    [category, resolvedLoc]
-  );
+    return {
+      obsData: obsRes.rows[0] || {},
+      recData: recyclerRatesRes.rows[0] || {},
+      bench:   benchRes.rows[0] || {},
+      loc,
+    };
+  };
 
-  const recData = recyclerRatesRes.rows[0] || {};
+  // City fallback chain: requested → other hubs → national
+  let { obsData, recData, bench, loc: usedLoc } = await tryCity(resolvedLoc);
 
-  // 3. Benchmark index rate (recycler_id IS NULL)
-  const benchRes = await query(
-    `SELECT buying_price, market_range_low, market_range_high
-     FROM prices
-     WHERE ${categoryConditions}
-       AND location = $2
-       AND recycler_id IS NULL
-     ORDER BY price_date DESC, id DESC
-     LIMIT 1`,
-    [category, resolvedLoc]
-  );
+  if (!bench.buying_price) {
+    const otherHubs = BENCHMARK_HUBS.map(h => h.name).filter(h => h !== resolvedLoc);
+    for (const hub of otherHubs) {
+      const fallback = await tryCity(hub);
+      if (fallback.bench.buying_price) {
+        ({ obsData, recData, bench, loc: usedLoc } = fallback);
+        break;
+      }
+    }
+  }
 
-  const bench = benchRes.rows[0] || {};
+  // If still no benchmark, use national aggregate
+  if (!bench.buying_price) {
+    const natBench = await query(
+      `SELECT
+         ROUND(AVG(buying_price)::numeric, 2) AS buying_price,
+         ROUND(AVG(market_range_low)::numeric, 2)  AS market_range_low,
+         ROUND(AVG(market_range_high)::numeric, 2) AS market_range_high
+       FROM prices
+       WHERE material_category = ANY($1::text[])
+         AND recycler_id IS NULL`,
+      [aliases]
+    );
+    bench = natBench.rows[0] || {};
+    usedLoc = 'National Average';
+  }
 
   const totalQuoteCount = parseInt(obsData.total_quotes, 10) || 0;
   const activeRecyclersCount = parseInt(recData.active_recyclers, 10) || 0;
@@ -241,11 +263,11 @@ export const getPriceAnalytics = async (category, location = 'Bengaluru', days =
     const trimmedRes = await query(
       `SELECT AVG(quoted_rate) AS trimmed_avg, COUNT(*) AS trimmed_count
        FROM price_observations
-       WHERE ${categoryConditions}
+       WHERE material_category = ANY($1::text[])
          AND location = $2
          AND observed_at >= CURRENT_DATE - ($3 || ' days')::INTERVAL
          AND quoted_rate BETWEEN $4 AND $5`,
-      [category, resolvedLoc, days, medianQuote * 0.6, medianQuote * 1.4]
+      [aliases, usedLoc, String(days), medianQuote * 0.6, medianQuote * 1.4]
     );
     if (trimmedRes.rows[0]?.trimmed_count > 0 && trimmedRes.rows[0].trimmed_avg != null) {
       nonOutlierAvgQuote = parseFloat(trimmedRes.rows[0].trimmed_avg);
@@ -286,8 +308,10 @@ export const getPriceAnalytics = async (category, location = 'Bengaluru', days =
 
   return {
     category,
-    location: resolvedLoc,
+    location: usedLoc,   // reflects the city whose data was actually used (may differ from requested)
+    requested_location: resolvedLoc,
     days: Number(days),
+
 
     // Clean separation of metrics
     quoted_market: {

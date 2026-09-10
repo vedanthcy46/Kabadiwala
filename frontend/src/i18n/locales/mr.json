@@ -3,7 +3,11 @@
     "en": "English",
     "hi": "हिंदी",
     "mr": "मराठी",
-    "kn": "ಕನ್ನಡ"
+    "kn": "ಕನ್ನಡ",
+    "ta": "தமிழ்",
+    "te": "తెలుగు",
+    "ml": "മലയാളം",
+    "bn": "বাংলা"
   },
   "nav": {
     "home": "कबाडीवाला कनेक्ट",
@@ -368,18 +372,45 @@
     "priceCard": "{{category}} — {{location}}"
   },
   "priceDiscovery": {
-    "title": "किंमत शोध आणि बाजार दर",
+    "title": "दर शोध आणि बाजार भाव",
     "liveTicker": "⚡ थेट कमोडिटी इंडेक्स",
     "syncPrices": "🔄 थेट बाजार सिंक करा",
-    "subtitle": "थेट बाजार दर, कल आणि पुनर्वापरकर्ता माहिती",
-    "regionalPrices": "सध्याचे बाजार दर",
+    "subtitle": "थेट बाजार भाव, ट्रेंड आणि रिसायकलर्स माहिती",
+    "regionalPrices": "सध्याचे बाजार भाव",
     "unitPrice": "प्रति किलो मूल्य",
-    "marketRange": "बाजार श्रेणी",
+    "marketRange": "मार्केट श्रेणी",
     "buyingPrice": "खरेदी किंमत",
     "speakPrice": "किंमती एका",
     "stopAudio": "थांबवा",
     "marketHigh": "बाजार कमाल",
-    "marketLow": "बाजार किमान"
+    "marketLow": "बाजार किमान",
+    "syncLiveMarket": "🔄 थेट बाजार सिंक करा",
+    "syncing": "सिंक होत आहे...",
+    "liveCommodityIndex": "थेट कमोडिटी इंडेक्स",
+    "benchmark": "बेंचमार्क",
+    "currentMarketBenchmark": "सध्याचा मार्केट बेंचमार्क",
+    "marketBenchmark": "मार्केट बेंचमार्क",
+    "useGps": "📍 GPS वापरा",
+    "locating": "📍 स्थान शोधत आहे...",
+    "demand": "मागणी",
+    "demandLevels": {
+      "high": "उच्च",
+      "medium": "मध्यम",
+      "low": "कमी"
+    },
+    "heroDesc": "कमोडिटी स्क्रॅप निर्देशांक आणि पडताळणी केलेल्या निरीक्षणांवर आधारित संदर्भ दर.",
+    "vsDaysAgo": "{{days}} दिवसांपूर्वीच्या तुलनेत {{change}}%",
+    "marketIntelligence": "📊 बाजार माहिती आणि कोट निरीक्षणे ({{location}})",
+    "quotedMarketAvg": "कोट केलेली बाजार सरासरी",
+    "medianQuote": "मध्यम कोट",
+    "quoteObservations": "कोट निरीक्षणे",
+    "realizedSaleAvg": "प्रत्यक्ष विक्री सरासरी",
+    "historicalProgression": "📈 ऐतिहासिक बेंचमार्क प्रगती ({{days}} दिवस)",
+    "filterRecyclersPlaceholder": "रिसायकलर नाव किंवा पत्त्यानुसार शोधा...",
+    "showingRecyclers": "{{total}} पैकी {{count}} रिसायकलर दाखवत आहे",
+    "clearFilter": "फिल्टर काढा",
+    "noRecyclersMatch": "\"{{search}}\" शी जुळणारा कोणताही रिसायकलर नाही.",
+    "distance": "अंतर"
   },
   "recyclers": {
     "title": "पुनर्वापरकर्ते",

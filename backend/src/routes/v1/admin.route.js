@@ -28,6 +28,9 @@ router.post(
 
 // Price-source registry (data provenance)
 router.get('/price-sources', adminController.getPriceSources);
+router.post('/price-sources', adminController.createPriceSource);
+router.put('/price-sources/:id', adminController.updatePriceSource);
+router.delete('/price-sources/:id', adminController.deletePriceSource);
 
 // Read-only operations register and immutable event audit trail.
 router.get('/lots', adminController.getLotRegister);

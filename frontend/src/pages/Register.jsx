@@ -9,10 +9,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { registerCollector } from '../api/client';
 import { saveSession, getSession } from '../services/auth';
 import { LoadingSpinner } from '../components/LoadingSpinner';
-import { useTranslation } from '../i18n/config.js';
+import { useTranslation, LANG_OPTIONS } from '../i18n/config.js';
 import './Login.css';
-
-const LANGUAGES = ['hi', 'en', 'mr', 'kn'];
 
 export default function Register() {
   const { t, setLang } = useTranslation();
@@ -173,16 +171,16 @@ export default function Register() {
 
           <fieldset className="pay-methods" aria-label={t('register.language')}>
             <legend className="form-label">{t('register.language')}</legend>
-            {LANGUAGES.map((lang) => (
-              <label key={lang} className={`pay-method ${form.preferred_language === lang ? 'pay-method--active' : ''}`}>
+            {LANG_OPTIONS.map((opt) => (
+              <label key={opt.code} className={`pay-method ${form.preferred_language === opt.code ? 'pay-method--active' : ''}`}>
                 <input
                   type="radio"
                   name="prefLang"
-                  value={lang}
-                  checked={form.preferred_language === lang}
-                  onChange={() => setField('preferred_language', lang)}
+                  value={opt.code}
+                  checked={form.preferred_language === opt.code}
+                  onChange={() => setField('preferred_language', opt.code)}
                 />
-                <span>{t(`register.lang.${lang}`)}</span>
+                <span>{opt.label}</span>
               </label>
             ))}
           </fieldset>

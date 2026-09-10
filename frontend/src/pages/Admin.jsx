@@ -22,7 +22,7 @@ import {
   adminLogin, getAdminSummary, getAllRecyclers,
   adminVerifyRecycler, getPriceSources, getAdminLots, getAdminAuditEvents,
   getAiDatasetSummary, getAiDatasetSamples, getAnomalies, getAiDatasetExportUrl, updateAiFeedback,
-  getAdminAnalytics, getAdminHeatmap,
+  getAdminAnalytics, getAdminHeatmap, createPriceSource, updatePriceSource, deletePriceSource,
 } from '../api/client';
 import AdminHeatmap from '../admin/AdminHeatmap';
 import { getSession, saveSession, clearSession } from '../services/auth';
@@ -161,6 +161,10 @@ export default function Admin() {
   const [rejectTargetRecycler, setRejectTargetRecycler] = useState(null);
   const [rejectionReasonInput, setRejectionReasonInput] = useState('');
   const [priceSources, setPriceSources] = useState([]);
+  const [showSourceModal, setShowSourceModal] = useState(false);
+  const [editingSource, setEditingSource] = useState(null);
+  const [sourceForm, setSourceForm] = useState({ source_name: '', source_type: 'MARKET REFERENCE', source_url: '', description: '' });
+  const [sourceBusy, setSourceBusy] = useState(false);
   const [lots, setLots] = useState([]);
   const [auditEvents, setAuditEvents] = useState([]);
   const [anomalies, setAnomalies] = useState([]);
@@ -440,6 +444,53 @@ export default function Admin() {
         </div>
       </div>
     );
+  }
+
+  // ── Price Sources CRUD ───────────────────────────────────────────────────
+  async function handleSavePriceSource(e) {
+    e.preventDefault();
+    setSourceBusy(true);
+    try {
+      if (editingSource) {
+        await updatePriceSource(editingSource.id, sourceForm);
+        flash('Price source updated.');
+      } else {
+        await createPriceSource(sourceForm);
+        flash('Price source created.');
+      }
+      setShowSourceModal(false);
+      setEditingSource(null);
+      // Refresh list
+      const res = await getPriceSources();
+      setPriceSources(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      flash('Error saving source: ' + err.message);
+    } finally {
+      setSourceBusy(false);
+    }
+  }
+
+  async function handleDeletePriceSource(id) {
+    if (!window.confirm('Delete this price source?')) return;
+    try {
+      await deletePriceSource(id);
+      flash('Price source deleted.');
+      setPriceSources(prev => prev.filter(s => s.id !== id));
+    } catch (err) {
+      flash('Error deleting source: ' + err.message);
+    }
+  }
+
+  function openNewSourceModal() {
+    setEditingSource(null);
+    setSourceForm({ source_name: '', source_type: 'MARKET REFERENCE', source_url: '', description: '' });
+    setShowSourceModal(true);
+  }
+
+  function openEditSourceModal(s) {
+    setEditingSource(s);
+    setSourceForm({ source_name: s.source_name, source_type: s.source_type, source_url: s.source_url || '', description: s.description || '' });
+    setShowSourceModal(true);
   }
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
@@ -1351,7 +1402,10 @@ export default function Admin() {
         </div>
       ) : (
         <div className="animate-fade-in">
-          <p className="quote-section__empty">{t('admin.pricesDesc')}</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
+            <p className="quote-section__empty" style={{ margin: 0 }}>{t('admin.pricesDesc')}</p>
+            <button className="btn btn-primary btn-sm" onClick={openNewSourceModal}>+ Add Source</button>
+          </div>
           <div className="admin-table-wrap card">
             <table className="admin-table">
               <thead>
@@ -1360,6 +1414,7 @@ export default function Admin() {
                   <th>{t('admin.table.type')}</th>
                   <th>{t('admin.table.url')}</th>
                   <th>{t('admin.table.lastCollected')}</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1374,6 +1429,12 @@ export default function Admin() {
                       {s.source_url ? <a href={s.source_url} target="_blank" rel="noreferrer" style={{ color: 'var(--color-primary)' }}>{s.source_url.replace(/^https?:\/\//, '')}</a> : '—'}
                     </td>
                     <td>{fmtDate(s.last_collected_at)}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                        <button className="btn btn-outline" style={{ padding: '2px 8px', fontSize: '0.75rem' }} onClick={() => openEditSourceModal(s)}>Edit</button>
+                        <button className="btn btn-outline" style={{ padding: '2px 8px', fontSize: '0.75rem', color: '#dc2626', borderColor: '#fca5a5' }} onClick={() => handleDeletePriceSource(s.id)}>Delete</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1514,6 +1575,48 @@ export default function Admin() {
                 {aiActionBusy === correctionSample.id ? <LoadingSpinner size="sm" /> : 'Save & Submit Correction'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Price Source Modal ── */}
+      {showSourceModal && (
+        <div className="modal-backdrop" onClick={() => setShowSourceModal(false)}>
+          <div className="modal-content card animate-scale-in" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px', width: '90%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)', borderBottom: '1px solid var(--color-border)', paddingBottom: 'var(--space-3)' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700' }}>
+                {editingSource ? 'Edit Price Source' : 'Add Price Source'}
+              </h3>
+              <button type="button" className="btn-icon" onClick={() => setShowSourceModal(false)} aria-label="Close">×</button>
+            </div>
+            <form onSubmit={handleSavePriceSource}>
+              <div style={{ marginBottom: 'var(--space-3)' }}>
+                <label className="form-label">Source Name</label>
+                <input required className="form-input" value={sourceForm.source_name} onChange={e => setSourceForm({ ...sourceForm, source_name: e.target.value })} />
+              </div>
+              <div style={{ marginBottom: 'var(--space-3)' }}>
+                <label className="form-label">Type</label>
+                <select className="form-input" value={sourceForm.source_type} onChange={e => setSourceForm({ ...sourceForm, source_type: e.target.value })}>
+                  <option value="MARKET REFERENCE">Market Reference</option>
+                  <option value="REGULATORY">Regulatory</option>
+                  <option value="FIELD SURVEY">Field Survey</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: 'var(--space-3)' }}>
+                <label className="form-label">URL (Optional)</label>
+                <input type="url" className="form-input" value={sourceForm.source_url} onChange={e => setSourceForm({ ...sourceForm, source_url: e.target.value })} />
+              </div>
+              <div style={{ marginBottom: 'var(--space-4)' }}>
+                <label className="form-label">Description (Optional)</label>
+                <textarea className="form-input" rows="2" value={sourceForm.description} onChange={e => setSourceForm({ ...sourceForm, description: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+                <button type="button" className="btn btn-outline" onClick={() => setShowSourceModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={sourceBusy}>
+                  {sourceBusy ? <LoadingSpinner size="sm" /> : 'Save'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

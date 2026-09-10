@@ -1,50 +1,74 @@
 // src/setup.js
-// One-shot database bootstrap: migrate every table then seed all data.
-//
-// Usage:
-//   npm run setup                  — full migrate + seed + verify
-//   npm run setup -- --skip-seed   — migrate only (no data)
-//   npm run setup -- --skip-verify — migrate + seed, skip row-count check
-//   npm run setup -- --force       — drop and recreate everything (DESTRUCTIVE)
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║   Kabadiwala Connect — Single-command Database Setup                     ║
+// ║                                                                          ║
+// ║   npm run setup                      full migrate + seed + verify        ║
+// ║   npm run setup -- --skip-seed       migrate only (schema, no data)      ║
+// ║   npm run setup -- --skip-verify     migrate + seed, skip row check      ║
+// ║   npm run setup -- --skip-prices     skip the xlsx price seeder          ║
+// ║   npm run setup -- --skip-dynamic    skip synthetic 90-day price history ║
+// ║   npm run setup -- --force           DROP + recreate everything           ║
+// ║   npm run setup -- --dry-run         parse everything, no DB writes       ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
 
-import fs from 'fs';
+import fs   from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { pool } from './db.js';
-import { seedNationalRecyclers } from './seedNationalRecyclers.js';
+import { seedNationalRecyclers }  from './seedNationalRecyclers.js';
+import { seedPricesFromDataset }  from '../scripts/seedPricesFromDataset.js';
+import { seedDynamicNationalPrices } from './services/marketPrice.service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const sqlDir = path.join(__dirname, '..', 'sql');
+const sqlDir    = path.join(__dirname, '..', 'sql');
 
-// ── Migration files — run in strict order ────────────────────────────────────
+// ── 1. Schema migrations — run in strict dependency order ─────────────────────
 const MIGRATIONS = [
-  { file: '01_schema.sql',                   label: 'Core schema (all base tables)' },
-  { file: '06_lot_system.sql',               label: 'Lot system (display IDs, events, images, AI feedback)' },
-  { file: '06_ai_feedback.sql',              label: 'AI feedback table' },
-  { file: '08_ai_governance.sql',            label: 'AI dataset governance views' },
-  { file: '05_national_recyclers_schema.sql',label: 'National recyclers reference table' },
-  { file: '09_lot_cancellation.sql',         label: 'Lot cancellation & audit fields' },
-  { file: '10_price_observations.sql',       label: 'Price observations dataset for recycler quote analytics' },
-  { file: '11_recycler_verification_workflow.sql', label: 'Controlled recycler verification, document audit & expiry workflow' },
+  { file: '01_schema.sql',
+    label: 'Core schema (all base tables: collectors, recyclers, materials, transactions, prices …)' },
+  { file: '06_lot_system.sql',
+    label: 'Lot system (display IDs, lot_events, lot_images, AI feedback linkage)' },
+  { file: '06_ai_feedback.sql',
+    label: 'AI feedback table (correction_reason, reviewed_by, outcome constraint)' },
+  { file: '08_ai_governance.sql',
+    label: 'AI dataset governance views (v_ai_dataset_samples, summary, trend)' },
+  { file: '05_national_recyclers_schema.sql',
+    label: 'National recyclers reference table' },
+  { file: '09_lot_cancellation.sql',
+    label: 'Lot cancellation & audit fields' },
+  { file: '10_price_observations.sql',
+    label: 'Price observations dataset (recycler quote analytics pipeline)' },
+  { file: '11_recycler_verification_workflow.sql',
+    label: 'Controlled recycler verification, document audit & expiry workflow' },
 ];
 
-// ── Seed files — run in dependency order ─────────────────────────────────────
+// ── 2. SQL seed files — static reference data, run in dependency order ────────
 const SEEDS = [
-  { file: '02_seed_recyclers_prices.sql',  label: 'Recyclers, prices, price sources' },
-  { file: '03_seed_transactions.sql',      label: 'Collectors, lots, transactions, traceability' },
-  { file: '05_seed_recycler_rates.sql',    label: 'Recycler-specific offered rates' },
-  { file: '06_seed_city_prices.sql',       label: 'Per-city price references (6 metros)' },
+  { file: '02_seed_recyclers_prices.sql',
+    label: 'Demo recyclers + initial Bengaluru price history (researched Jun–Aug 2026)' },
+  { file: '03_seed_transactions.sql',
+    label: 'Demo collectors, lots, transactions, traceability & AI feedback samples' },
+  { file: '05_seed_recycler_rates.sql',
+    label: 'Recycler-specific offered rates (per recycler, per category)' },
 ];
 
-// ── Expected row counts after seeding ────────────────────────────────────────
+// ── 3. Programmatic seed steps — run after SQL seeds ─────────────────────────
+//  These are JS functions that do complex work SQL files can't easily do:
+//    A. seedNationalRecyclers   — imports full XLSX recycler directory with coords
+//    B. seedPricesFromDataset   — imports pricedataset.xlsx → real per-city prices
+//    C. seedDynamicNationalPrices — generates 90-day synthetic history for all hubs
+//       (fills gaps for categories not in the xlsx, keeps recycler-specific rates fresh)
+
+// ── Expected minimum row counts after full setup ──────────────────────────────
 const EXPECTED = {
-  recyclers:    579,  // 10 demo + 569 imported national entries
-  prices:       426,
-  collectors:    2,
-  materials:     6,
-  transactions:  6,
-  traceability:  4,
-  price_sources: 4,
+  recyclers:         579,   // 10 demo + 569 national XLSX entries
+  prices:            500,   // baseline after real XLSX prices seeded (was 426)
+  collectors:          2,
+  materials:           6,
+  transactions:        6,
+  traceability:        4,
+  price_sources:       4,
+  price_observations:  0,   // created empty; grows as recyclers quote lots
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,12 +76,12 @@ const EXPECTED = {
 function readSql(filename) {
   const filePath = path.join(sqlDir, filename);
   if (!fs.existsSync(filePath)) {
-    throw new Error(`SQL file not found: ${filename}`);
+    throw new Error(`SQL migration file not found: ${filePath}`);
   }
   return fs.readFileSync(filePath, 'utf8');
 }
 
-async function runFile(filename, label) {
+async function runSqlFile(filename, label) {
   process.stdout.write(`  ▶  ${label} ... `);
   const sql = readSql(filename);
   await pool.query(sql);
@@ -75,8 +99,11 @@ async function dropAll() {
       END LOOP;
     END $$;
     DROP SEQUENCE IF EXISTS lot_display_seq CASCADE;
+    DROP VIEW  IF EXISTS v_ai_dataset_samples  CASCADE;
+    DROP VIEW  IF EXISTS v_ai_dataset_summary  CASCADE;
+    DROP VIEW  IF EXISTS v_ai_dataset_trend    CASCADE;
   `);
-  console.log('  ✅ All tables dropped.\n');
+  console.log('  ✅ All tables and views dropped.\n');
 }
 
 async function listTables() {
@@ -89,85 +116,138 @@ async function listTables() {
 
 async function verifyCounts() {
   console.log('\n📊 Verifying row counts...');
-  const res = await pool.query(`
-    SELECT
-      (SELECT COUNT(*) FROM recyclers)     AS recyclers,
-      (SELECT COUNT(*) FROM prices)        AS prices,
-      (SELECT COUNT(*) FROM collectors)    AS collectors,
-      (SELECT COUNT(*) FROM materials)     AS materials,
-      (SELECT COUNT(*) FROM transactions)  AS transactions,
-      (SELECT COUNT(*) FROM traceability)  AS traceability,
-      (SELECT COUNT(*) FROM price_sources) AS price_sources
-  `);
+
+  const queries = Object.keys(EXPECTED).map(t => `(SELECT COUNT(*) FROM ${t}) AS ${t}`);
+  const res = await pool.query(`SELECT ${queries.join(', ')}`);
   const actual = res.rows[0];
+
   let allOk = true;
   for (const [table, expected] of Object.entries(EXPECTED)) {
     const got = Number(actual[table]);
-    const ok = got >= expected; // >= so re-runs with extra data still pass
+    const ok  = got >= expected;
     if (!ok) allOk = false;
-    console.log(`  ${ok ? '✅' : '❌'} ${table.padEnd(14)} expected ≥ ${expected}, got ${got}`);
+    const sign = ok ? '✅' : '❌';
+    const cmp  = expected === 0 ? `(table exists)` : `expected ≥ ${expected}, got ${got}`;
+    console.log(`  ${sign} ${table.padEnd(20)} ${cmp}`);
   }
   return allOk;
 }
 
+// ── Main ─────────────────────────────────────────────────────────────────────
+
 async function main() {
-  const args = process.argv.slice(2);
-  const skipSeed   = args.includes('--skip-seed');
-  const skipVerify = args.includes('--skip-verify');
-  const force      = args.includes('--force');
+  const args        = process.argv.slice(2);
+  const skipSeed    = args.includes('--skip-seed');
+  const skipVerify  = args.includes('--skip-verify');
+  const skipPrices  = args.includes('--skip-prices');
+  const skipDynamic = args.includes('--skip-dynamic');
+  const force       = args.includes('--force');
+  const dryRun      = args.includes('--dry-run');
 
   console.log('');
-  console.log('╔══════════════════════════════════════════════════╗');
-  console.log('║   Kabadiwala Connect — Database Setup             ║');
-  console.log('╚══════════════════════════════════════════════════╝');
+  console.log('╔══════════════════════════════════════════════════════════╗');
+  console.log('║   Kabadiwala Connect — Database Setup (SIH26229)          ║');
+  console.log('╚══════════════════════════════════════════════════════════╝');
+  if (dryRun)      console.log('  ⚠️  DRY RUN — no writes will be made\n');
+  if (skipSeed)    console.log('  ⏭️  --skip-seed: schema-only run\n');
+  if (skipPrices)  console.log('  ⏭️  --skip-prices: xlsx price seeder skipped\n');
+  if (skipDynamic) console.log('  ⏭️  --skip-dynamic: synthetic price history skipped\n');
   console.log('');
 
   try {
-    // ── Optional: wipe everything first ────────────────────────────────────
-    if (force) await dropAll();
+    // ── Step 0: Optional wipe ─────────────────────────────────────────────────
+    if (force && !dryRun) await dropAll();
 
-    // ── Migrations ──────────────────────────────────────────────────────────
-    console.log('📦 Running migrations...\n');
+    // ── Step 1: Migrations ────────────────────────────────────────────────────
+    console.log('📦 Migrations\n');
     for (const { file, label } of MIGRATIONS) {
-      await runFile(file, label);
+      if (dryRun) {
+        console.log(`  ▶  ${label} ... (dry-run)`);
+        readSql(file); // validates file exists & is readable
+      } else {
+        await runSqlFile(file, label);
+      }
     }
 
     const tables = await listTables();
-    console.log(`\n📋 Tables present: ${tables.join(', ')}\n`);
+    console.log(`\n  📋 Tables: ${tables.join(', ')}\n`);
 
-    // ── Seeds ───────────────────────────────────────────────────────────────
     if (skipSeed) {
-      console.log('⏭️  Skipping seed data (--skip-seed)\n');
+      console.log('⏭️  Skipping all seed steps (--skip-seed)\n');
     } else {
-      console.log('🌱 Seeding data...\n');
+
+      // ── Step 2: Static SQL seeds ───────────────────────────────────────────
+      console.log('🌱 Static SQL seeds\n');
       for (const { file, label } of SEEDS) {
-        await runFile(file, label);
+        if (dryRun) {
+          console.log(`  ▶  ${label} ... (dry-run)`);
+        } else {
+          await runSqlFile(file, label);
+        }
       }
 
-      process.stdout.write('  ▶  National recycler dataset (XLSX → recyclers with coordinates) ... ');
-      await seedNationalRecyclers({ verbose: false });
-      console.log('✅');
+      // ── Step 3: National recycler directory ───────────────────────────────
+      console.log('\n📦 National recycler directory\n');
+      process.stdout.write('  ▶  National recyclers (XLSX → recyclers with coordinates) ... ');
+      if (!dryRun) {
+        await seedNationalRecyclers({ verbose: false });
+      }
+      console.log(dryRun ? '(dry-run)' : '✅');
 
-      if (!skipVerify) {
+      // ── Step 4: Real city prices from pricedataset.xlsx ───────────────────
+      if (!skipPrices) {
+        console.log('\n💰 Real market prices (pricedataset.xlsx → all cities)\n');
+        process.stdout.write('  ▶  Parsing pricedataset.xlsx ... ');
+        if (!dryRun) {
+          const { inserted, skipped, priceList } = await seedPricesFromDataset({
+            verbose: false,
+            dryRun: false,
+            days: 90,
+          });
+          console.log(`✅  (${priceList.length} city×category entries, ${inserted} new rows, ${skipped} already existed)`);
+        } else {
+          const { priceList } = await seedPricesFromDataset({ verbose: false, dryRun: true });
+          console.log(`(dry-run, ${priceList.length} entries parsed)`);
+        }
+      }
+
+      // ── Step 5: Synthetic 90-day price history for all benchmark hubs ─────
+      if (!skipDynamic) {
+        console.log('\n📈 Synthetic price history (market drift model for all hub cities)\n');
+        process.stdout.write('  ▶  Generating 90-day benchmark trend for 9 hubs × 7 categories ... ');
+        if (!dryRun) {
+          await seedDynamicNationalPrices(90);
+          console.log('✅');
+        } else {
+          console.log('(dry-run)');
+        }
+      }
+
+      // ── Step 6: Verification ───────────────────────────────────────────────
+      if (!skipVerify && !dryRun) {
         const ok = await verifyCounts();
         if (!ok) {
-          console.error('\n❌ Row count mismatch — check for failed inserts above.');
+          console.error('\n❌ Row count check failed — check the seed logs above.');
           process.exit(1);
         }
-        console.log('\n✅ All seed data verified.');
+        console.log('\n✅ All row counts verified.');
       }
     }
 
-    // ── Done ────────────────────────────────────────────────────────────────
+    // ── Done ──────────────────────────────────────────────────────────────────
     console.log('');
-    console.log('╔══════════════════════════════════════════════════╗');
-    console.log('║   ✅  Setup complete!                             ║');
-    console.log('╚══════════════════════════════════════════════════╝');
+    console.log('╔══════════════════════════════════════════════════════════╗');
+    console.log(`║   ✅  Setup${dryRun ? ' (dry-run)' : ''} complete!${' '.repeat(dryRun ? 38 : 41)}║`);
+    console.log('╚══════════════════════════════════════════════════════════╝');
     console.log('');
-    console.log('  npm start              start the API server');
-    console.log('  npm run setup          re-run this script');
-    console.log('  npm run setup -- --force   wipe + rebuild from scratch');
-    console.log('  npm run reset          clear data, keep schema');
+    console.log('  npm start                           start the API server');
+    console.log('  npm run setup                       re-run full setup (idempotent)');
+    console.log('  npm run setup -- --force            wipe + full rebuild from scratch');
+    console.log('  npm run setup -- --skip-seed        schema-only (no data)');
+    console.log('  npm run setup -- --skip-prices      skip xlsx price seeder');
+    console.log('  npm run setup -- --skip-dynamic     skip synthetic price history');
+    console.log('  npm run setup -- --dry-run          validate everything, no DB writes');
+    console.log('  npm run reset                       clear all data, keep schema');
     console.log('');
 
   } catch (err) {

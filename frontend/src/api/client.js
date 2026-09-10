@@ -420,6 +420,9 @@ export const adminVerifyRecycler = (id, decision, verification_source, rejection
 
 // GET /v1/admin/price-sources → provenance registry
 export const getPriceSources = () => request('/admin/price-sources');
+export const createPriceSource = (data) => request('/admin/price-sources', { method: 'POST', body: JSON.stringify(data) });
+export const updatePriceSource = (id, data) => request(`/admin/price-sources/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+export const deletePriceSource = (id) => request(`/admin/price-sources/${id}`, { method: 'DELETE' });
 
 // Read-only operational controls for the admin console.
 export const getAdminLots = () => request('/admin/lots');

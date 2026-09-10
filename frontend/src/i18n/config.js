@@ -22,10 +22,25 @@ import en from './locales/en.json';
 import hi from './locales/hi.json';
 import mr from './locales/mr.json';
 import kn from './locales/kn.json';
+import ta from './locales/ta.json';
+import te from './locales/te.json';
+import ml from './locales/ml.json';
+import bn from './locales/bn.json';
 
-const LOCALES = { en, hi, mr, kn };
-const SUPPORTED = ['en', 'hi', 'mr', 'kn'];
+const LOCALES = { en, hi, mr, kn, ta, te, ml, bn };
+const SUPPORTED = ['en', 'hi', 'kn', 'ta', 'te', 'ml', 'bn', 'mr'];
 const STORAGE_KEY = 'kc_lang';
+
+export const LANG_OPTIONS = [
+  { code: 'en', label: 'English' },
+  { code: 'hi', label: 'हिंदी' },
+  { code: 'kn', label: 'ಕನ್ನಡ' },
+  { code: 'ta', label: 'தமிழ்' },
+  { code: 'te', label: 'తెలుగు' },
+  { code: 'ml', label: 'മലയാളം' },
+  { code: 'bn', label: 'বাংলা' },
+  { code: 'mr', label: 'मराठी' },
+];
 
 function detectInitialLang() {
   // Collector's account preference wins (set at registration/login)

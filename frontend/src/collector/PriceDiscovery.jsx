@@ -105,7 +105,8 @@ export default function PriceDiscovery() {
   const synthRef = useRef(window.speechSynthesis);
 
   const stats = trendStats(trends);
-  const catLabel = MATERIAL_CATEGORIES.find(c => c.id === category)?.label;
+  const rawCat = MATERIAL_CATEGORIES.find(c => c.id === category);
+  const catLabel = t(`materials.${category}`, rawCat?.label || category);
 
   const loadCards = useCallback(() => {
     setLoadingCards(true);
@@ -371,13 +372,13 @@ export default function PriceDiscovery() {
       <div className="p2-pd-header animate-fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-4)', marginBottom: 'var(--space-5)' }}>
         <div>
           <span className="p2-pd-header__kicker" style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '4px' }}>
-            ⚡ Live Commodity Index · {location}
+            {t('priceDiscovery.liveTicker', '⚡ Live Commodity Index')} · {location}
           </span>
           <h1 className="p2-pd-header__title" style={{ fontSize: '1.75rem', fontWeight: '800', margin: '0 0 4px 0', color: 'var(--color-text, #0f172a)' }}>
-            Price Discovery & Market Rates
+            {t('priceDiscovery.title', 'Price Discovery & Market Rates')}
           </h1>
           <p className="p2-pd-header__subtitle" style={{ fontSize: '0.92rem', color: 'var(--color-text-muted, #64748b)', margin: 0 }}>
-            Live market rates, trends & recycler information
+            {t('priceDiscovery.subtitle', 'Live market rates, trends & recycler information')}
           </p>
         </div>
 
@@ -388,9 +389,9 @@ export default function PriceDiscovery() {
           style={{ padding: '8px 18px', fontWeight: '600', fontSize: '0.9rem' }}
         >
           {syncingPrices ? (
-            <><LoadingSpinner size="sm" /> Syncing…</>
+            <><LoadingSpinner size="sm" /> {t('priceDiscovery.syncing', 'Syncing…')}</>
           ) : (
-            <>🔄 Sync Live Market</>
+            <>{t('priceDiscovery.syncLiveMarket', '🔄 Sync Live Market')}</>
           )}
         </button>
       </div>
@@ -400,11 +401,11 @@ export default function PriceDiscovery() {
         <div className="p2-pulse-strip animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)', padding: '12px 20px', background: 'linear-gradient(135deg, rgba(124,58,237,0.06) 0%, rgba(37,99,235,0.06) 100%)', border: '1px solid rgba(124,58,237,0.2)', borderRadius: '12px', marginBottom: 'var(--space-5)' }}>
           <div className="p2-pulse-strip__live" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: '700', color: '#10b981', letterSpacing: '0.05em' }}>
             <span className="live-dot" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 0 3px rgba(16,185,129,0.25)', display: 'inline-block' }} />
-            <span>LIVE COMMODITY INDEX</span>
+            <span>{t('priceDiscovery.liveCommodityIndex', 'LIVE COMMODITY INDEX')}</span>
           </div>
           <div className="p2-pulse-strip__info" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span className="p2-pulse-strip__name" style={{ fontWeight: '600', color: '#1e293b', fontSize: '0.95rem' }}>
-              {catLabel} Benchmark:
+              {catLabel} {t('priceDiscovery.benchmark', 'Benchmark')}:
             </span>
             <span className="p2-pulse-strip__price font-mono" style={{ fontWeight: '700', fontSize: '1.2rem', color: 'var(--color-primary, #7c3aed)' }}>
               {fmt(authoritativeBenchmark)}/kg
@@ -412,7 +413,7 @@ export default function PriceDiscovery() {
           </div>
           <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
             <span className="status-badge status-badge--success" style={{ fontSize: '0.78rem', fontWeight: '600', padding: '3px 10px' }}>
-              Demand: {currentPulseItem.regional_demand}
+              {t('priceDiscovery.demand', 'Demand')}: {t(`priceDiscovery.demandLevels.${(currentPulseItem?.regional_demand || '').toLowerCase()}`, currentPulseItem?.regional_demand || '')}
             </span>
             <span className="status-badge" style={{ fontSize: '0.78rem', fontWeight: '600', padding: '3px 10px' }}>
               {currentPulseItem.hub}
@@ -434,7 +435,7 @@ export default function PriceDiscovery() {
               style={{ fontSize: 'var(--text-xs)', padding: '2px 8px', borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
               title="Detect your exact GPS coordinates and match closest pricing hub"
             >
-              {gpsLoading ? '📍 Locating…' : '📍 Use GPS'}
+              {gpsLoading ? t('priceDiscovery.locating', '📍 Locating…') : t('priceDiscovery.useGps', '📍 Use GPS')}
             </button>
           </div>
           <select
@@ -497,14 +498,14 @@ export default function PriceDiscovery() {
                     aria-pressed={isSelected}
                   >
                     <div className="p2-price-card__icon" aria-hidden="true">{cat.icon}</div>
-                    <div className="p2-price-card__label">{cat.label}</div>
+                    <div className="p2-price-card__label">{t(`materials.${cat.id}`, cat.label)}</div>
                     <div className="region-card__row">
-                      <span>Current Market Benchmark</span>
+                      <span>{t('priceDiscovery.currentMarketBenchmark', 'Current Market Benchmark')}</span>
                       <span className="region-card__val font-mono">{card ? fmt(card.market_benchmark ?? card.unit_price) : t('common.noData')} <span className="text-muted">/ {t('common.kg')}</span></span>
                     </div>
                     {card && card.market_range_low != null && card.market_range_high != null && (
                       <div className="region-card__row">
-                        <span>Market Range</span>
+                        <span>{t('priceDiscovery.marketRange', 'Market Range')}</span>
                         <span className="region-card__val font-mono">{fmt(card.market_range_low)}–{fmt(card.market_range_high)}</span>
                       </div>
                     )}
@@ -530,7 +531,7 @@ export default function PriceDiscovery() {
               onClick={() => setCategory(cat.id)}
             >
               <span aria-hidden="true">{cat.icon}</span>
-              <span>{cat.label}</span>
+              <span>{t(`materials.${cat.id}`, cat.label)}</span>
             </button>
           ))}
         </div>
@@ -538,7 +539,7 @@ export default function PriceDiscovery() {
         <div className="price-hero card">
           <div className="price-hero__info">
             <span className="text-xs text-muted" style={{ textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '2px' }}>
-              Current Market Benchmark
+              {t('priceDiscovery.currentMarketBenchmark', 'Current Market Benchmark')}
             </span>
             <p className="price-hero__label" style={{ margin: '0 0 6px' }}>
               {catLabel} · {location}
@@ -548,12 +549,12 @@ export default function PriceDiscovery() {
               {authoritativeBenchmark && <span className="price-main-stat__unit">/ {t('common.kg')}</span>}
             </div>
             <p className="text-xs text-muted" style={{ marginTop: '4px', fontSize: '0.78rem' }}>
-              Platform reference rate based on commodity scrap indices and verified observations.
+              {t('priceDiscovery.heroDesc', 'Platform reference rate based on commodity scrap indices and verified observations.')}
             </p>
             {stats?.change != null && (
               <p className={`p2-price-change ${stats.change >= 0 ? 'p2-price-change--up' : 'p2-price-change--down'}`}>
                 <span aria-hidden="true">{stats.change >= 0 ? '▲' : '▼'}</span>
-                {Math.abs(stats.change).toFixed(1)}% vs {days}d ago
+                {t('priceDiscovery.vsDaysAgo', { change: Math.abs(stats.change).toFixed(1), days })}
               </p>
             )}
           </div>
@@ -586,28 +587,28 @@ export default function PriceDiscovery() {
         {analytics && !loadingTrend && (
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <div style={{ padding: 'var(--space-2) 0', fontSize: '0.82rem', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              📊 Market Intelligence & Quote Observations ({location})
+              {t('priceDiscovery.marketIntelligence', { location })}
             </div>
             <div className="p2-stat-chips" style={{ background: 'rgba(124, 58, 237, 0.04)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px dashed rgba(124, 58, 237, 0.3)' }}>
               <div className="p2-stat-chip p2-stat-chip--accent" title="Platform reference rate based on recent verified recycler observations">
-                <span className="p2-stat-chip__label">Market Benchmark</span>
+                <span className="p2-stat-chip__label">{t('priceDiscovery.marketBenchmark', 'Market Benchmark')}</span>
                 <span className="p2-stat-chip__value">{fmt(authoritativeBenchmark)}/kg</span>
               </div>
               <div className="p2-stat-chip" title="Average of active recycler bid observations">
-                <span className="p2-stat-chip__label">Quoted Market Avg</span>
+                <span className="p2-stat-chip__label">{t('priceDiscovery.quotedMarketAvg', 'Quoted Market Avg')}</span>
                 <span className="p2-stat-chip__value">{analytics.recycler_quote_avg ? `${fmt(analytics.recycler_quote_avg)}/kg` : '—'}</span>
               </div>
               <div className="p2-stat-chip" title="Median active recycler quote offer">
-                <span className="p2-stat-chip__label">Median Quote</span>
+                <span className="p2-stat-chip__label">{t('priceDiscovery.medianQuote', 'Median Quote')}</span>
                 <span className="p2-stat-chip__value">{analytics.recycler_quote_median ? `${fmt(analytics.recycler_quote_median)}/kg` : '—'}</span>
               </div>
               <div className="p2-stat-chip">
-                <span className="p2-stat-chip__label">Quote Observations</span>
+                <span className="p2-stat-chip__label">{t('priceDiscovery.quoteObservations', 'Quote Observations')}</span>
                 <span className="p2-stat-chip__value">{analytics.quote_observations_count}</span>
               </div>
               {analytics.completed_transaction_avg ? (
                 <div className="p2-stat-chip p2-stat-chip--up" title="Average realized payout from completed handover settlements">
-                  <span className="p2-stat-chip__label">Realized Sale Avg</span>
+                  <span className="p2-stat-chip__label">{t('priceDiscovery.realizedSaleAvg', 'Realized Sale Avg')}</span>
                   <span className="p2-stat-chip__value">{fmt(analytics.completed_transaction_avg)}/kg</span>
                 </div>
               ) : null}
@@ -636,7 +637,7 @@ export default function PriceDiscovery() {
         {trends.length > 0 && (
           <div style={{ marginTop: 'var(--space-4)', padding: 'var(--space-3) var(--space-4)', background: 'var(--color-surface-raised, #f8fafc)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
             <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '8px' }}>
-              📈 Historical Benchmark Progression ({days} Days)
+              {t('priceDiscovery.historicalProgression', { days })}
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', fontFamily: 'var(--font-mono)', fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-primary)' }}>
               {trends.slice(-6).map((t, idx, arr) => (
@@ -705,19 +706,19 @@ export default function PriceDiscovery() {
             <input
               type="text"
               className="form-input"
-              placeholder="Filter by recycler name or address…"
+              placeholder={t('priceDiscovery.filterRecyclersPlaceholder', 'Filter by recycler name or address…')}
               value={recyclerSearch}
               onChange={(e) => setRecyclerSearch(e.target.value)}
               style={{ paddingLeft: '32px', paddingRight: recyclerSearch ? '32px' : '10px', fontSize: 'var(--text-sm)' }}
-              aria-label="Filter recyclers by name or address"
+              aria-label={t('priceDiscovery.filterRecyclersPlaceholder', 'Filter recyclers by name or address')}
             />
             {recyclerSearch && (
               <button
                 type="button"
                 onClick={() => setRecyclerSearch('')}
                 style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, fontSize: '1rem', padding: '2px 6px' }}
-                title="Clear filter"
-                aria-label="Clear filter"
+                title={t('priceDiscovery.clearFilter', 'Clear filter')}
+                aria-label={t('priceDiscovery.clearFilter', 'Clear filter')}
               >
                 ✕
               </button>
@@ -725,7 +726,7 @@ export default function PriceDiscovery() {
           </div>
           {recyclerSearch && (
             <span className="text-xs text-muted">
-              Showing {filteredRecyclers.length} of {rateRows.filter(r => (r.materials_accepted || []).includes(category)).length} recyclers
+              {t('priceDiscovery.showingRecyclers', { count: filteredRecyclers.length, total: rateRows.filter(r => (r.materials_accepted || []).includes(category)).length })}
             </span>
           )}
         </div>
@@ -734,7 +735,7 @@ export default function PriceDiscovery() {
           <PageLoader />
         ) : filteredRecyclers.length === 0 ? (
           <div className="empty-state" style={{ minHeight: 100 }}>
-            <p>{recyclerSearch ? `No recyclers match "${recyclerSearch}".` : t('prices.noRecyclers')}</p>
+            <p>{recyclerSearch ? t('priceDiscovery.noRecyclersMatch', { search: recyclerSearch }) : t('prices.noRecyclers')}</p>
             {recyclerSearch && (
               <button
                 type="button"
@@ -742,7 +743,7 @@ export default function PriceDiscovery() {
                 onClick={() => setRecyclerSearch('')}
                 style={{ marginTop: 'var(--space-2)' }}
               >
-                Clear Filter
+                {t('priceDiscovery.clearFilter', 'Clear Filter')}
               </button>
             )}
           </div>
@@ -753,7 +754,7 @@ export default function PriceDiscovery() {
                 <tr>
                   <th>{t('prices.recyclerName')}</th>
                   <th>{t('prices.location')}</th>
-                  {userCoords && <th>Distance</th>}
+                  {userCoords && <th>{t('priceDiscovery.distance', 'Distance')}</th>}
                   <th>{t('prices.offered')}</th>
                   <th>{t('prices.pickup')}</th>
                   <th>vs {t('prices.buyingPrice')}</th>

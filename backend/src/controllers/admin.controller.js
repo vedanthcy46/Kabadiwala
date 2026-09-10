@@ -20,8 +20,22 @@ export const verifyRecycler = async (req, res) => {
 
 export const getPriceSources = async (req, res) => {
   const data = await adminService.listPriceSources();
-
   res.status(200).json({ success: true, count: data.length, data });
+};
+
+export const createPriceSource = async (req, res) => {
+  const data = await adminService.createPriceSource(req.body);
+  res.status(201).json({ success: true, data });
+};
+
+export const updatePriceSource = async (req, res) => {
+  const data = await adminService.updatePriceSource(req.params.id, req.body);
+  res.status(200).json({ success: true, data });
+};
+
+export const deletePriceSource = async (req, res) => {
+  const data = await adminService.deletePriceSource(req.params.id);
+  res.status(200).json({ success: true, data });
 };
 
 export const getLotRegister = async (req, res) => {

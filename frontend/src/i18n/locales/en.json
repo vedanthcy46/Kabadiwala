@@ -3,7 +3,11 @@
     "en": "English",
     "hi": "हिंदी",
     "mr": "मराठी",
-    "kn": "ಕನ್ನಡ"
+    "kn": "ಕನ್ನಡ",
+    "ta": "தமிழ்",
+    "te": "తెలుగు",
+    "ml": "മലയാളം",
+    "bn": "বাংলা"
   },
   "nav": {
     "home": "Kabadiwala Connect",
@@ -379,7 +383,34 @@
     "speakPrice": "Speak Prices",
     "stopAudio": "Stop Speaking",
     "marketHigh": "Market High",
-    "marketLow": "Market Low"
+    "marketLow": "Market Low",
+    "syncLiveMarket": "🔄 Sync Live Market",
+    "syncing": "Syncing…",
+    "liveCommodityIndex": "LIVE COMMODITY INDEX",
+    "benchmark": "Benchmark",
+    "currentMarketBenchmark": "Current Market Benchmark",
+    "marketBenchmark": "Market Benchmark",
+    "useGps": "📍 Use GPS",
+    "locating": "📍 Locating…",
+    "demand": "Demand",
+    "demandLevels": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "heroDesc": "Platform reference rate based on commodity scrap indices and verified observations.",
+    "vsDaysAgo": "{{change}}% vs {{days}}d ago",
+    "marketIntelligence": "📊 Market Intelligence & Quote Observations ({{location}})",
+    "quotedMarketAvg": "Quoted Market Avg",
+    "medianQuote": "Median Quote",
+    "quoteObservations": "Quote Observations",
+    "realizedSaleAvg": "Realized Sale Avg",
+    "historicalProgression": "📈 Historical Benchmark Progression ({{days}} Days)",
+    "filterRecyclersPlaceholder": "Filter by recycler name or address…",
+    "showingRecyclers": "Showing {{count}} of {{total}} recyclers",
+    "clearFilter": "Clear Filter",
+    "noRecyclersMatch": "No recyclers match \"{{search}}\".",
+    "distance": "Distance"
   },
   "recyclers": {
     "title": "Matched Recyclers",

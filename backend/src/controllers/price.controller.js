@@ -4,7 +4,7 @@ import * as marketPriceService from '../services/marketPrice.service.js';
 export const getPriceTrends = async (req, res) => {
   const { category, location, days } = req.query;
 
-  const trends = await priceService.getPriceTrends(
+  const { rows, resolvedLocation } = await priceService.getPriceTrends(
     category,
     location,
     days
@@ -18,7 +18,8 @@ export const getPriceTrends = async (req, res) => {
 
   res.status(200).json({
     success: true,
-    data: trends,
+    data: rows,
+    resolvedLocation,   // so frontend can show which city's data it's using
     analytics,
   });
 };

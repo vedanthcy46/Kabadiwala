@@ -18,6 +18,10 @@
     "keepalive": "node scripts/keepalive.js",
     "setup": "node src/setup.js",
     "setup:force": "node src/setup.js -- --force",
+    "setup:schema": "node src/setup.js -- --skip-seed",
+    "setup:dry-run": "node src/setup.js -- --dry-run",
+    "seed:prices": "node scripts/seedPricesFromDataset.js",
+    "seed:prices:dry": "node scripts/seedPricesFromDataset.js --dry-run",
     "export:ai-dataset": "node scripts/export_training_dataset.js",
     "eval:ai-dataset": "node scripts/evaluate_training_dataset.js"
   },

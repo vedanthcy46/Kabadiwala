@@ -76,62 +76,54 @@ export function resolvePricingLocation(locStr, lat = null, lng = null) {
  */
 export const calculateInstantValuation = async (category, location, weight) => {
   const normalizedLoc = resolvePricingLocation(location);
+  const { getCategoryAliases } = await import('../utils/categoryAliases.js');
+  const aliases = getCategoryAliases(category);
 
-  // Weighted average of the 10 most recent price records for this category+location.
-  // More recent rows get higher weight (rank 1 = most recent = weight 10, rank 10 = weight 1).
-  // This smooths out single-day spikes and gives a more representative market price.
-  let priceResult = await query(
+  const fetchRows = (loc) => query(
     `SELECT buying_price, unit, market_range_low, market_range_high,
             ROW_NUMBER() OVER (ORDER BY price_date DESC) AS recency_rank
      FROM prices
-     WHERE (
-       material_category = $1
-       OR ($1 IN ('Motor', 'Motors') AND material_category = 'Motor/Magnet Assembly')
-       OR ($1 = 'Motor/Magnet Assembly' AND material_category IN ('Motor', 'Motors'))
-       OR ($1 IN ('LCD', 'LCDs', 'LCD Panels') AND material_category = 'LCD Panel')
-       OR ($1 = 'LCD Panel' AND material_category IN ('LCD', 'LCDs', 'LCD Panels'))
-       OR ($1 IN ('Plastic', 'Plastics', 'Mixed Plastics') AND material_category = 'Mixed Plastic')
-       OR ($1 = 'Mixed Plastic' AND material_category IN ('Plastic', 'Plastics', 'Mixed Plastics'))
-       OR ($1 = 'Batteries' AND material_category = 'Battery')
-       OR ($1 = 'PCBs' AND material_category = 'PCB')
-       OR ($1 = 'Cables' AND material_category = 'Cable')
-       OR ($1 = 'CRTs' AND material_category = 'CRT')
-     ) AND (
-       location = $2
-       OR LOWER(location) = LOWER($2)
-       OR location ILIKE $3
-     )
+     WHERE material_category = ANY($1::text[])
+       AND location = $2
+       AND recycler_id IS NULL
      ORDER BY price_date DESC
      LIMIT 10`,
-    [category, normalizedLoc, `%${normalizedLoc}%`]
+    [aliases, loc]
   );
 
+  // 1. Try the resolved hub city
+  let priceResult = await fetchRows(normalizedLoc);
+
+  // 2. Try other benchmark hubs (deterministic order)
   if (priceResult.rows.length === 0) {
-    // Fallback to Bengaluru benchmark prices
-    priceResult = await query(
-      `SELECT buying_price, unit, market_range_low, market_range_high,
-              ROW_NUMBER() OVER (ORDER BY price_date DESC) AS recency_rank
-       FROM prices
-       WHERE (
-         material_category = $1
-         OR ($1 IN ('Motor', 'Motors') AND material_category = 'Motor/Magnet Assembly')
-         OR ($1 = 'Motor/Magnet Assembly' AND material_category IN ('Motor', 'Motors'))
-         OR ($1 IN ('LCD', 'LCDs', 'LCD Panels') AND material_category = 'LCD Panel')
-         OR ($1 = 'LCD Panel' AND material_category IN ('LCD', 'LCDs', 'LCD Panels'))
-         OR ($1 IN ('Plastic', 'Plastics', 'Mixed Plastics') AND material_category = 'Mixed Plastic')
-         OR ($1 = 'Mixed Plastic' AND material_category IN ('Plastic', 'Plastics', 'Mixed Plastics'))
-         OR ($1 = 'Batteries' AND material_category = 'Battery')
-         OR ($1 = 'PCBs' AND material_category = 'PCB')
-         OR ($1 = 'Cables' AND material_category = 'Cable')
-         OR ($1 = 'CRTs' AND material_category = 'CRT')
-       )
-       ORDER BY price_date DESC
-       LIMIT 10`,
-      [category]
-    );
+    const otherHubs = BENCHMARK_HUBS.map(h => h.name).filter(h => h !== normalizedLoc);
+    for (const hub of otherHubs) {
+      priceResult = await fetchRows(hub);
+      if (priceResult.rows.length > 0) break;
+    }
   }
 
+  // 3. National aggregate (no location filter)
   if (priceResult.rows.length === 0) {
+    const natRes = await query(
+      `SELECT
+         ROUND(AVG(buying_price)::numeric, 2)      AS buying_price,
+         MAX(unit)                                 AS unit,
+         ROUND(AVG(market_range_low)::numeric, 2)  AS market_range_low,
+         ROUND(AVG(market_range_high)::numeric, 2) AS market_range_high,
+         1 AS recency_rank
+       FROM prices
+       WHERE material_category = ANY($1::text[])
+         AND recycler_id IS NULL`,
+      [aliases]
+    );
+    // Aggregate always returns 1 row — check buying_price is not null
+    if (natRes.rows[0]?.buying_price != null) {
+      priceResult = natRes;
+    }
+  }
+
+  if (priceResult.rows.length === 0 || priceResult.rows[0]?.buying_price == null) {
     throw new ApiError(404, `No pricing data found for ${category} in ${location}`);
   }
 

@@ -1,16 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { useTranslation } from '../i18n/config.js';
+import { useTranslation, LANG_OPTIONS } from '../i18n/config.js';
 import { getSession, clearSession } from '../services/auth';
 import './Navbar.css';
-
-const LANG_OPTIONS = [
-  { code: 'en', label: 'EN' },
-  { code: 'hi', label: 'हिंदी' },
-  { code: 'mr', label: 'मराठी' },
-  { code: 'kn', label: 'ಕನ್ನಡ' },
-];
 
 function navFor(role, t) {
   if (role === 'recycler') {
