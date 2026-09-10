@@ -722,7 +722,11 @@
     "showingRecyclers": "{{total}} টির মধ্যে {{count}} টি রিসাইক্লার প্রদর্শিত হচ্ছে",
     "clearFilter": "ফিল্টার মুছুন",
     "noRecyclersMatch": "\"{{search}}\" এর সাথে কোনো রিসাইক্লার মেলেনি।",
-    "distance": "দূরত্ব"
+    "distance": "দূরত্ব",
+    "speechCurrentPrice": "{{location}} এ {{category}} এর বর্তমান দাম প্রতি কেজিতে {{price}} টাকা।",
+    "speechIncreased": "গত {{days}} দিনে দাম {{change}} শতাংশ বৃদ্ধি পেয়েছে।",
+    "speechDecreased": "গত {{days}} দিনে দাম {{change}} শতাংশ কমেছে।",
+    "speechNoData": "{{location}} এ {{category}} এর জন্য কোনো মূল্যের তথ্য পাওয়া যায়নি।"
   },
   "register": {
     "title": "কাবাদিওয়ালা অ্যাকাউন্ট তৈরি করুন",

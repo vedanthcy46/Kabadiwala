@@ -722,7 +722,11 @@
     "showingRecyclers": "{{total}} ൽ {{count}} റീസൈക്ലർമാരെ കാണിക്കുന്നു",
     "clearFilter": "ഫിൽട്ടർ മായ്‌ക്കുക",
     "noRecyclersMatch": "\"{{search}}\" ന് പൊരുത്തപ്പെടുന്ന റീസൈക്ലർമാരില്ല.",
-    "distance": "ദൂരം"
+    "distance": "ദൂരം",
+    "speechCurrentPrice": "{{location}} ൽ {{category}} ന്റെ നിലവിലെ വില കിലോഗ്രാമിന് {{price}} രൂപയാണ്.",
+    "speechIncreased": "കഴിഞ്ഞ {{days}} ദിവസങ്ങളിൽ വില {{change}} ശതമാനം വർദ്ധിച്ചു.",
+    "speechDecreased": "കഴിഞ്ഞ {{days}} ദിവസങ്ങളിൽ വില {{change}} ശതമാനം കുറഞ്ഞു.",
+    "speechNoData": "{{location}} ൽ {{category}} ന് വില വിവരങ്ങൾ ലഭ്യമല്ല."
   },
   "register": {
     "title": "കബഡിവാല അക്കൗണ്ട് ഉണ്ടാക്കുക",

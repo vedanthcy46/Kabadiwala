@@ -722,7 +722,11 @@
     "showingRecyclers": "{{total}} இல் {{count}} மறுசுழற்சியாளர்கள் காட்டப்படுகிறார்கள்",
     "clearFilter": "வடிகட்டியை நீக்கு",
     "noRecyclersMatch": "\"{{search}}\" உடன் எந்த மறுசுழற்சியாளரும் பொருந்தவில்லை.",
-    "distance": "தூரம்"
+    "distance": "தூரம்",
+    "speechCurrentPrice": "{{location}} இல் {{category}} இன் தற்போதைய விலை ஒரு கிலோவுக்கு {{price}} ரூபாய்.",
+    "speechIncreased": "கடந்த {{days}} நாட்களில் விலை {{change}} சதவீதம் அதிகரித்துள்ளது.",
+    "speechDecreased": "கடந்த {{days}} நாட்களில் விலை {{change}} சதவீதம் குறைந்துள்ளது.",
+    "speechNoData": "{{location}} இல் {{category}} க்கு எந்த விலை தகவலும் கிடைக்கவில்லை."
   },
   "register": {
     "title": "கபடிவாலா கணக்கை உருவாக்கவும்",

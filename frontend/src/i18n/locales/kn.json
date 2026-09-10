@@ -410,7 +410,11 @@
     "showingRecyclers": "{{total}} ರಲ್ಲಿ {{count}} ರಿಸೈಕ್ಲರ್‌ಗಳನ್ನು ತೋರಿಸಲಾಗುತ್ತಿದೆ",
     "clearFilter": "ಫಿಲ್ಟರ್ ತೆರವುಗೊಳಿಸಿ",
     "noRecyclersMatch": "\"{{search}}\" ಗೆ ಯಾವುದೇ ರಿಸೈಕ್ಲರ್ ಹೊಂದಿಕೆಯಾಗುವುದಿಲ್ಲ.",
-    "distance": "ದೂರ"
+    "distance": "ದೂರ",
+    "speechCurrentPrice": "{{location}} ನಲ್ಲಿ {{category}} ಪ್ರಸ್ತುತ ಬೆಲೆ ಪ್ರತಿ ಕೆಜಿಗೆ {{price}} ರೂಪಾಯಿಗಳು.",
+    "speechIncreased": "ಕಳೆದ {{days}} ದಿನಗಳಲ್ಲಿ ಬೆಲೆಯು {{change}} ಪ್ರತಿಶತ ಹೆಚ್ಚಾಗಿದೆ.",
+    "speechDecreased": "ಕಳೆದ {{days}} ದಿನಗಳಲ್ಲಿ ಬೆಲೆಯು {{change}} ಪ್ರತಿಶತ ಕಡಿಮೆಯಾಗಿದೆ.",
+    "speechNoData": "{{location}} ನಲ್ಲಿ {{category}} ಗಾಗಿ ಯಾವುದೇ ಬೆಲೆ ಡೇಟಾ ಲಭ್ಯವಿಲ್ಲ."
   },
   "recyclers": {
     "title": "ರಿಸೈಕ್ಲರ್‌ಗಳು",

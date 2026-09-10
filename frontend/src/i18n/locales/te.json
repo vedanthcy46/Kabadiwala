@@ -722,7 +722,11 @@
     "showingRecyclers": "{{total}} లో {{count}} రీసైక్లర్లను చూపుతోంది",
     "clearFilter": "ఫిల్టర్‌ను క్లియర్ చేయండి",
     "noRecyclersMatch": "\"{{search}}\" తో సరిపోలే రీసైక్లర్లు లేరు.",
-    "distance": "దూరం"
+    "distance": "దూరం",
+    "speechCurrentPrice": "{{location}} లో {{category}} ప్రస్తుత ధర కిలోకు {{price}} రూపాయలు.",
+    "speechIncreased": "గత {{days}} రోజుల్లో ధర {{change}} శాతం పెరిగింది.",
+    "speechDecreased": "గత {{days}} రోజుల్లో ధర {{change}} శాతం తగ్గింది.",
+    "speechNoData": "{{location}} లో {{category}} కొరకు ఎలాంటి ధర డేటా అందుబాటులో లేదు."
   },
   "register": {
     "title": "కబాడీవాలా ఖాతాను సృష్టించండి",

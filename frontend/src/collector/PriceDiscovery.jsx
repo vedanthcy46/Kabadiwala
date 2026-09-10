@@ -78,7 +78,7 @@ function trendStats(arr) {
 }
 
 export default function PriceDiscovery() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [category, setCategory] = useState(MATERIAL_CATEGORIES[2].id);
   const [location, setLocation] = useState(DEFAULT_LOCATION);
   const [days, setDays] = useState(90);
@@ -102,7 +102,8 @@ export default function PriceDiscovery() {
   const [error, setError] = useState('');
 
   const [speaking, setSpeaking] = useState(false);
-  const synthRef = useRef(window.speechSynthesis);
+  const synthRef = useRef(typeof window !== 'undefined' ? window.speechSynthesis : null);
+  const audioRef = useRef(null);
 
   const stats = trendStats(trends);
   const rawCat = MATERIAL_CATEGORIES.find(c => c.id === category);
@@ -161,6 +162,12 @@ export default function PriceDiscovery() {
     fetchRecyclerRates();
   }, [fetchRecyclerRates]);
 
+  useEffect(() => {
+    return () => {
+      stopSpeaking();
+    };
+  }, [lang, category]);
+
   async function handleSyncLiveMarket() {
     setSyncingPrices(true);
     setSyncToast('');
@@ -180,27 +187,122 @@ export default function PriceDiscovery() {
     }
   }
 
-  function speakPrice() {
-    if (!synthRef.current) return;
-    synthRef.current.cancel();
-    const price = stats?.latest;
-    const txt = price
-      ? `Current ${catLabel} price in ${location} is Rupees ${Math.round(price)} per kilogram. ${
-          stats.change != null ? `Price has ${stats.change > 0 ? 'increased' : 'decreased'} by ${Math.abs(stats.change).toFixed(1)} percent over the last ${days} days.` : ''
-        }`
-      : `No price data available for ${catLabel} in ${location}.`;
-    const utt = new SpeechSynthesisUtterance(txt);
-    utt.lang = 'en-IN';
-    utt.rate = 0.9;
-    utt.onstart = () => setSpeaking(true);
-    utt.onend = () => setSpeaking(false);
-    utt.onerror = () => setSpeaking(false);
-    synthRef.current.speak(utt);
-  }
+  const BCP47_MAP = {
+    en: 'en-IN',
+    hi: 'hi-IN',
+    kn: 'kn-IN',
+    mr: 'mr-IN',
+    ta: 'ta-IN',
+    te: 'te-IN',
+    ml: 'ml-IN',
+    bn: 'bn-IN',
+  };
 
   function stopSpeaking() {
-    synthRef.current?.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    if (synthRef.current) {
+      synthRef.current.cancel();
+    }
     setSpeaking(false);
+  }
+
+  function fallbackToSpeechSynthesis(txt, languageCode) {
+    if (!synthRef.current) {
+      setSpeaking(false);
+      return;
+    }
+    try {
+      synthRef.current.cancel();
+      const utt = new SpeechSynthesisUtterance(txt);
+      const targetBcp47 = BCP47_MAP[languageCode] || 'en-IN';
+      utt.lang = targetBcp47;
+      utt.rate = 0.9;
+
+      const voices = synthRef.current.getVoices() || [];
+      const matchedVoice = voices.find(v => v.lang === targetBcp47)
+        || voices.find(v => v.lang && v.lang.toLowerCase().startsWith(languageCode))
+        || voices.find(v => v.lang && v.lang.includes(targetBcp47));
+      if (matchedVoice) {
+        utt.voice = matchedVoice;
+      }
+
+      utt.onstart = () => setSpeaking(true);
+      utt.onend = () => setSpeaking(false);
+      utt.onerror = () => setSpeaking(false);
+      synthRef.current.speak(utt);
+    } catch (e) {
+      setSpeaking(false);
+    }
+  }
+
+  const CITY_SPEECH_NAMES = {
+    kn: { Bengaluru: 'ಬೆಂಗಳೂರು', Mysuru: 'ಮೈಸೂರು', Chennai: 'ಚೆನ್ನೈ', Hyderabad: 'ಹೈದರಾಬಾದ್', Mumbai: 'ಮುಂಬೈ', Delhi: 'ದೆಹಲಿ', Pune: 'ಪುಣೆ', Kolkata: 'ಕೋಲ್ಕತ್ತಾ', Ahmedabad: 'ಅಹಮದಾಬಾದ್', Jaipur: 'ಜೈಪುರ', Kochi: 'ಕೊಚ್ಚಿ', Coimbatore: 'ಕೊಯಮತ್ತೂರು' },
+    hi: { Bengaluru: 'बेंगलुरु', Mysuru: 'मैसूर', Chennai: 'चेन्नई', Hyderabad: 'हैदराबाद', Mumbai: 'मुंबई', Delhi: 'दिल्ली', Pune: 'पुणे', Kolkata: 'कोलकाता', Ahmedabad: 'अहमदाबाद', Jaipur: 'जयपुर', Kochi: 'कोच्चि', Coimbatore: 'कोयम्बटूर' },
+    ta: { Bengaluru: 'பெங்களூரு', Mysuru: 'மைசூர்', Chennai: 'சென்னை', Hyderabad: 'ஹைதராபாத்', Mumbai: 'மும்பை', Delhi: 'தில்லி', Pune: 'புனே', Kolkata: 'கொல்கத்தா', Ahmedabad: 'அகமதாபாத்', Jaipur: 'ஜெய்ப்பூர்', Kochi: 'கொச்சி' },
+    te: { Bengaluru: 'బెంగళూరు', Mysuru: 'మైసూరు', Chennai: 'చెన్నై', Hyderabad: 'హైదరాబాద్', Mumbai: 'ముంబై', Delhi: 'ఢిల్లీ', Pune: 'పుణె', Kolkata: 'కోల్‌కతా', Ahmedabad: 'అహ్మదాబాద్', Jaipur: 'జైపూర్', Kochi: 'కొచ్చి' },
+    ml: { Bengaluru: 'ബെംഗളൂരു', Mysuru: 'മൈസൂരു', Chennai: 'ചെന്നൈ', Hyderabad: 'ഹൈദരാബാദ്', Mumbai: 'മുംബൈ', Delhi: 'ഡൽഹി', Pune: 'പൂനെ', Kolkata: 'കൊൽക്കത്ത', Kochi: 'കൊച്ചി' },
+    bn: { Bengaluru: 'বেঙ্গালুরু', Kolkata: 'কলকাতা', Delhi: 'দিল্লি', Mumbai: 'মুম্বই', Chennai: 'চেন্নাই', Hyderabad: 'হায়দরাবাদ', Pune: 'পুনে', Ahmedabad: 'আহমেদাবাদ', Jaipur: 'জয়পুর', Kochi: 'কোচি' },
+    mr: { Bengaluru: 'बंगळुरू', Mumbai: 'मुंबई', Pune: 'पुणे', Delhi: 'दिल्ली', Nagpur: 'नागपूर', Nashik: 'नाशिक', Kolkata: 'कोलकाता', Chennai: 'चेन्नई' },
+  };
+
+  function cleanSpeechCategory(str) {
+    if (!str) return '';
+    return str.replace(/\s*\([^)]*\)/g, '').trim();
+  }
+
+  function speakPrice() {
+    stopSpeaking();
+    const price = authoritativeBenchmark || stats?.latest;
+    const cleanCat = cleanSpeechCategory(catLabel);
+    const speechLoc = CITY_SPEECH_NAMES[lang]?.[location] || location;
+    let txt = '';
+
+    if (price) {
+      const baseTxt = t('priceDiscovery.speechCurrentPrice', {
+        category: cleanCat,
+        location: speechLoc,
+        price: Math.round(price),
+      });
+
+      let trendTxt = '';
+      if (stats?.change != null && Math.abs(stats.change) > 0.01) {
+        const changeVal = Math.abs(stats.change).toFixed(1);
+        trendTxt = ' ' + (stats.change > 0
+          ? t('priceDiscovery.speechIncreased', { change: changeVal, days })
+          : t('priceDiscovery.speechDecreased', { change: changeVal, days }));
+      }
+      txt = (baseTxt + trendTxt).trim();
+    } else {
+      txt = t('priceDiscovery.speechNoData', { category: cleanCat, location: speechLoc });
+    }
+
+    // 1. Play native regional audio stream via backend TTS proxy (works across all browsers for en, hi, kn, mr, ta, te, ml, bn)
+    try {
+      const ttsLang = lang || 'en';
+      const apiBase = import.meta.env?.VITE_API_BASE_URL ? import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, '') : '/v1';
+      const audioUrl = `${apiBase}/tts?lang=${encodeURIComponent(ttsLang)}&text=${encodeURIComponent(txt)}`;
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.onplay = () => setSpeaking(true);
+      audio.onended = () => {
+        setSpeaking(false);
+        audioRef.current = null;
+      };
+      audio.onerror = () => {
+        fallbackToSpeechSynthesis(txt, lang);
+      };
+
+      audio.play().catch(() => {
+        fallbackToSpeechSynthesis(txt, lang);
+      });
+    } catch (err) {
+      fallbackToSpeechSynthesis(txt, lang);
+    }
   }
 
   const currentCategoryCard = priceCards[category];

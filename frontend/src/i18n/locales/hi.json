@@ -410,7 +410,11 @@
     "showingRecyclers": "{{total}} में से {{count}} रीसाइकलर्स प्रदर्शित",
     "clearFilter": "फ़िल्टर हटाएं",
     "noRecyclersMatch": "\"{{search}}\" से कोई रीसाइकलर मेल नहीं खाता।",
-    "distance": "दूरी"
+    "distance": "दूरी",
+    "speechCurrentPrice": "{{location}} में {{category}} का वर्तमान भाव {{price}} रुपये प्रति किलोग्राम है।",
+    "speechIncreased": "पिछले {{days}} दिनों में भाव {{change}} प्रतिशत बढ़ा है।",
+    "speechDecreased": "पिछले {{days}} दिनों में भाव {{change}} प्रतिशत घटा है।",
+    "speechNoData": "{{location}} में {{category}} के लिए कोई मूल्य डेटा उपलब्ध नहीं है।"
   },
   "recyclers": {
     "title": "रीसाइकलर खोज",

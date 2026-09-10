@@ -410,7 +410,11 @@
     "showingRecyclers": "Showing {{count}} of {{total}} recyclers",
     "clearFilter": "Clear Filter",
     "noRecyclersMatch": "No recyclers match \"{{search}}\".",
-    "distance": "Distance"
+    "distance": "Distance",
+    "speechCurrentPrice": "Current {{category}} price in {{location}} is Rupees {{price}} per kilogram.",
+    "speechIncreased": "Price has increased by {{change}} percent over the last {{days}} days.",
+    "speechDecreased": "Price has decreased by {{change}} percent over the last {{days}} days.",
+    "speechNoData": "No price data available for {{category}} in {{location}}."
   },
   "recyclers": {
     "title": "Matched Recyclers",

@@ -410,7 +410,11 @@
     "showingRecyclers": "{{total}} पैकी {{count}} रिसायकलर दाखवत आहे",
     "clearFilter": "फिल्टर काढा",
     "noRecyclersMatch": "\"{{search}}\" शी जुळणारा कोणताही रिसायकलर नाही.",
-    "distance": "अंतर"
+    "distance": "अंतर",
+    "speechCurrentPrice": "{{location}} मध्ये {{category}} चा सध्याचा भाव {{price}} रुपये प्रति किलो आहे.",
+    "speechIncreased": "गेल्या {{days}} दिवसांत भावात {{change}} टक्के वाढ झाली आहे.",
+    "speechDecreased": "गेल्या {{days}} दिवसांत भावात {{change}} टक्के घट झाली आहे.",
+    "speechNoData": "{{location}} मध्ये {{category}} साठी कोणताही दर डेटा उपलब्ध नाही."
   },
   "recyclers": {
     "title": "पुनर्वापरकर्ते",
