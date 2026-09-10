@@ -30,6 +30,8 @@ export default function MatchedRecyclers() {
   let initialLat = state?.lat != null ? Number(state.lat) : null;
   let initialLng = state?.lng != null ? Number(state.lng) : null;
 
+  // If coordinates were not passed in state, try to extract from location string
+  // e.g. "GPS Location (12.9238, 77.5019)"
   if ((initialLat == null || initialLng == null) && state?.location) {
     const coordsMatch = String(state.location).match(/(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/);
     if (coordsMatch) {
@@ -38,6 +40,7 @@ export default function MatchedRecyclers() {
     }
   }
 
+  // Fall back to session-registered coordinates (collector's base city)
   if (initialLat == null || initialLng == null) {
     initialLat = session?.latitude != null ? Number(session.latitude) : DEFAULT_LAT;
     initialLng = session?.longitude != null ? Number(session.longitude) : DEFAULT_LNG;
@@ -49,26 +52,12 @@ export default function MatchedRecyclers() {
   const [selectedId, setSelectedId] = useState(null);
   const lotWeight = state?.weight || valuation?.weight_kg || valuation?.lot?.approx_weight_kg;
 
-  const [detectingGps, setDetectingGps] = useState(false);
-
-  // If no registered GPS in session or state, fallback to browser geolocation
-  useEffect(() => {
-    if (session?.latitude != null && session?.longitude != null) return;
-    if (state?.lat != null && state?.lng != null) return;
-    if (!navigator.geolocation) return;
-    setDetectingGps(true);
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        setLat(pos.coords.latitude);
-        setLng(pos.coords.longitude);
-        setMapCenter([pos.coords.latitude, pos.coords.longitude]);
-        setDetectingGps(false);
-      },
-      () => {
-        setDetectingGps(false);
-      }
-    );
-  }, [session, state]);
+  // NOTE: We deliberately do NOT call navigator.geolocation here.
+  // The lot's collection_lat / collection_lng (passed via router state from
+  // LotDetail or CreateLot) is the authoritative source for matching distance.
+  // Using the user's *current* GPS position would produce different distances
+  // every time they reopen the same lot from a different physical location.
+  const [detectingGps] = useState(false);
 
   const [radiusKm, setRadiusKm] = useState(150);
   const [recyclers, setRecyclers] = useState([]);
@@ -105,26 +94,31 @@ export default function MatchedRecyclers() {
     };
 
     getMatchedRecyclers(queryParams)
-      .then(r => {
+      .then(async (r) => {
+        // Update the map center to the resolved city center if the backend resolved
+        // a city name — but do NOT overwrite lat/lng themselves. Those are anchored
+        // to the lot's stored collection point and must remain stable.
         if (r.location?.lat != null && r.location?.lng != null) {
           setMapCenter([r.location.lat, r.location.lng]);
-          setLat(r.location.lat);
-          setLng(r.location.lng);
         } else if (lat != null && lng != null) {
           setMapCenter([lat, lng]);
         }
         const list = Array.isArray(r.data) ? r.data : [];
-        setRecyclers(list);
         if (list.length === 0 && rad < 1000) {
           // Auto-expand search if no local recyclers found within city radius
-          getMatchedRecyclers({ ...queryParams, maxDistanceKm: 1500 })
-            .then(res2 => {
-              if (Array.isArray(res2.data) && res2.data.length > 0) {
-                setRecyclers(res2.data);
-                setRadiusKm(1500);
-              }
-            })
-            .catch(() => {});
+          try {
+            const res2 = await getMatchedRecyclers({ ...queryParams, maxDistanceKm: 1500 });
+            if (Array.isArray(res2.data) && res2.data.length > 0) {
+              setRecyclers(res2.data);
+              setRadiusKm(1500);
+            } else {
+              setRecyclers([]);
+            }
+          } catch {
+            setRecyclers([]);
+          }
+        } else {
+          setRecyclers(list);
         }
       })
       .catch(() => setError(t('recyclers.loadError')))
@@ -191,11 +185,21 @@ export default function MatchedRecyclers() {
 
   async function handleSelectRecycler(recycler) {
     if (!lotId) {
-      setError(t('recyclers.loadError'));
+      setError('No lot selected. Please create a lot first.');
+      return;
+    }
+    const collectorId = currentCollectorId();
+    if (!collectorId) {
+      navigate('/login', { replace: true });
       return;
     }
     // The recycler_id from the matching endpoint is returned as `id`
     const recyclerId = recycler.id ?? recycler.recycler_id;
+    const weight = valuation?.lot?.approx_weight_kg;
+    if (!weight) {
+      setError('Lot weight is missing. Cannot initiate handover.');
+      return;
+    }
     setHandingOver(recyclerId);
     setError('');
     try {
@@ -204,13 +208,13 @@ export default function MatchedRecyclers() {
       // OFFLINE: Returns { queued: true, queueItem } — operation saved to IndexedDB for sync later
       const result = await initiateHandover({
         lot_id: lotId,
-        collector_id: currentCollectorId() ?? DEMO_COLLECTOR_ID,
+        collector_id: collectorId,
         recycler_id: recyclerId,
         photo_refs: [],
-        weight_kg: valuation?.lot?.approx_weight_kg || 1,
+        weight_kg: weight,
         gps_lat: lat,
         gps_lng: lng,
-        handover_location: state?.location || 'Bengaluru',
+        handover_location: state?.location || 'Unknown',
       });
 
       if (result?.queued) {
@@ -328,7 +332,7 @@ export default function MatchedRecyclers() {
   return (
     <div className="container">
       <div className="animate-fade-in" style={{ marginBottom: 'var(--space-6)' }}>
-        <Link to="/collector/create-lot" className="back-link">{t('common.back')}</Link>
+        <button onClick={() => navigate(-1)} className="back-link btn-link" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--color-primary)' }}>{t('common.back')}</button>
         <h1 className="section-title" style={{ marginTop: 'var(--space-3)' }}>{t('recyclers.title')}</h1>
         <p className="section-subtitle">
           {t('recyclers.subtitle')}
@@ -538,7 +542,7 @@ export default function MatchedRecyclers() {
             <RecyclersMap
               recyclers={filteredRecyclers}
               center={mapCenter}
-              radiusKm={50}
+              radiusKm={radiusKm}
               selectedId={selectedId}
               onSelect={(id) => setSelectedId(id)}
             />

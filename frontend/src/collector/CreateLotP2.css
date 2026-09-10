@@ -238,6 +238,11 @@
   border: 1.5px solid #86efac;
 }
 
+.p2-ai-banner--low {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%) !important;
+  border: 1.5px solid #fcd34d !important;
+}
+
 .p2-ai-banner__top {
   display: flex;
   gap: var(--space-3);

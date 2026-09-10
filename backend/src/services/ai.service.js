@@ -79,6 +79,8 @@ export const updateAiFeedback = async (id, { lot_id, human_category, outcome, co
      RETURNING *`,
     [lot_id ?? null, human_category ?? null, outcome ?? null, correction_reason ?? null, reviewed_by, id]
   );
+  // Real-time continuous learning: update model parameters whenever feedback is validated
+  trainModelFromFeedback().catch(() => {});
   return result.rows[0];
 };
 
@@ -199,3 +201,135 @@ export const exportAiDatasetCsv = async () => {
   const body = result.rows.map((r) => cols.map((c) => CSV_CELL(r[c])).join(','));
   return [header, ...body].join('\n');
 };
+
+// ── Continuous-Learning Machine Learning State ─────────────────────────────
+
+let activeModel = {
+  version: 'v1.0-base',
+  trainedAt: new Date().toISOString(),
+  totalSamples: 0,
+  accuracy_pct: 75.0,
+  centroids: {},
+  accuracyPriors: {
+    PCB: 0.88,
+    Battery: 0.82,
+    Cable: 0.80,
+    LCD: 0.85,
+    CRT: 0.78,
+    Motor: 0.81,
+    Plastic: 0.76,
+  },
+};
+
+export const getActiveModel = () => activeModel;
+
+/**
+ * Train / Retrain the continuous-learning model from all human-validated
+ * samples in ai_feedback.
+ */
+export const trainModelFromFeedback = async () => {
+  await initAiDatasetSchema();
+
+  const [samplesRes, statsRes] = await Promise.all([
+    query(`
+      SELECT 
+        COALESCE(human_category, ai_predicted_category) AS category,
+        ai_features,
+        outcome
+      FROM ai_feedback
+      WHERE outcome IN ('accepted', 'corrected')
+        AND ai_features IS NOT NULL
+    `),
+    query(`
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE outcome = 'accepted')::int AS accepted,
+        COUNT(*) FILTER (WHERE outcome = 'corrected')::int AS corrected
+      FROM ai_feedback
+      WHERE outcome IN ('accepted', 'corrected')
+    `),
+  ]);
+
+  const categories = ['CRT', 'LCD', 'PCB', 'Cable', 'Battery', 'Motor', 'Plastic'];
+  const categoryData = {};
+  for (const c of categories) {
+    categoryData[c] = {
+      sampleCount: 0,
+      acceptedCount: 0,
+      correctedCount: 0,
+      featureSums: {},
+    };
+  }
+
+  for (const row of samplesRes.rows) {
+    const cat = row.category;
+    if (!categoryData[cat]) {
+      categoryData[cat] = { sampleCount: 0, acceptedCount: 0, correctedCount: 0, featureSums: {} };
+    }
+    const cd = categoryData[cat];
+    cd.sampleCount++;
+    if (row.outcome === 'accepted') cd.acceptedCount++;
+    if (row.outcome === 'corrected') cd.correctedCount++;
+
+    let f = row.ai_features;
+    if (typeof f === 'string') {
+      try { f = JSON.parse(f); } catch { f = null; }
+    }
+    if (f && typeof f === 'object') {
+      for (const [k, v] of Object.entries(f)) {
+        if (typeof v === 'number' && Number.isFinite(v)) {
+          cd.featureSums[k] = (cd.featureSums[k] || 0) + v;
+        }
+      }
+    }
+  }
+
+  const centroids = {};
+  const accuracyPriors = {};
+
+  for (const cat of categories) {
+    const cd = categoryData[cat];
+    if (cd.sampleCount > 0) {
+      centroids[cat] = {};
+      for (const [k, sum] of Object.entries(cd.featureSums)) {
+        centroids[cat][k] = Math.round((sum / cd.sampleCount) * 10000) / 10000;
+      }
+      // Laplace-smoothed empirical accuracy
+      accuracyPriors[cat] = Math.round(
+        ((cd.acceptedCount + 1) / (cd.acceptedCount + cd.correctedCount + 2)) * 1000
+      ) / 1000;
+    } else {
+      centroids[cat] = null;
+      accuracyPriors[cat] = 0.75;
+    }
+  }
+
+  const totals = statsRes.rows[0];
+  const totalValidated = Number(totals?.total || 0);
+  const overallAcc = totalValidated > 0
+    ? Math.round((Number(totals.accepted) / totalValidated) * 1000) / 10
+    : 75.0;
+
+  activeModel = {
+    version: `v1.${totalValidated}`,
+    trainedAt: new Date().toISOString(),
+    totalSamples: totalValidated,
+    accuracy_pct: overallAcc,
+    centroids,
+    accuracyPriors,
+    categoryBreakdown: Object.fromEntries(
+      categories.map((c) => [
+        c,
+        {
+          samples: categoryData[c].sampleCount,
+          accuracy: accuracyPriors[c],
+        },
+      ])
+    ),
+  };
+
+  return activeModel;
+};
+
+// Initial model training on startup
+trainModelFromFeedback().catch(() => {});

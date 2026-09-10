@@ -756,7 +756,14 @@ export default function CollectorLotDetail() {
                 <p className="quote-section__empty">{t('quotes.noQuotesYet')}</p>
                 <Link
                   to="/collector/matched-recyclers"
-                  state={{ category: lot.category, lotId: lot.lot_id }}
+                  state={{
+                    category: lot.category,
+                    lotId: lot.lot_id,
+                    location: lot.collection_location ?? undefined,
+                    lat: lot.collection_lat != null ? Number(lot.collection_lat) : undefined,
+                    lng: lot.collection_lng != null ? Number(lot.collection_lng) : undefined,
+                    valuation: { lot },
+                  }}
                   className="btn btn-primary"
                   style={{ marginTop: 'var(--space-4)' }}
                 >
@@ -918,7 +925,14 @@ export default function CollectorLotDetail() {
               <p>{t('recyclers.noMatchDesc')}</p>
               <Link
                 to="/collector/matched-recyclers"
-                state={{ category: lot.category, lotId: lot.lot_id }}
+                state={{
+                  category: lot.category,
+                  lotId: lot.lot_id,
+                  location: lot.collection_location ?? undefined,
+                  lat: lot.collection_lat != null ? Number(lot.collection_lat) : undefined,
+                  lng: lot.collection_lng != null ? Number(lot.collection_lng) : undefined,
+                  valuation: { lot },
+                }}
                 className="btn btn-primary"
               >
                 {t('recyclers.title')}

@@ -156,7 +156,10 @@ const ensureRecyclerCanService = async (recyclerId, category) => {
   }
 
   const materials = Array.isArray(recycler.materials_accepted) ? recycler.materials_accepted : [];
-  if (category && !materials.includes(category)) {
+  const { getCategoryAliases } = await import('../utils/categoryAliases.js');
+  const aliases = getCategoryAliases(category);
+  
+  if (category && !aliases.some(a => materials.includes(a))) {
     throw new ApiError(400, `This recycler does not accept ${category}`);
   }
 
@@ -194,8 +197,8 @@ export const requestQuote = async (data) => {
 
   const collectorId = lot.collector_id ?? lot.txn_collector_id;
 
-  if (lot.transaction_status === 'accepted') {
-    throw new ApiError(400, 'This lot already has an accepted quote');
+  if (['accepted', 'matched', 'handed_over', 'confirmed'].includes(lot.transaction_status)) {
+    throw new ApiError(400, 'This lot is no longer accepting quotes');
   }
 
   // Reuse an existing open offer if present (collector retry)
@@ -234,8 +237,8 @@ export const sendOffer = async (data) => {
   const lot = await getLotWithOwner(lot_id);
   const recycler = await ensureRecyclerCanService(recycler_id, lot.category);
 
-  if (lot.transaction_status === 'accepted') {
-    throw new ApiError(400, 'This lot already has an accepted quote');
+  if (['accepted', 'matched', 'handed_over', 'confirmed'].includes(lot.transaction_status)) {
+    throw new ApiError(400, 'This lot is no longer accepting quotes');
   }
 
   const collectorId = lot.collector_id ?? lot.txn_collector_id;
@@ -299,6 +302,10 @@ export const respondToOffer = async (offerId, data) => {
   }
   const offer = offerResult.rows[0];
 
+  if (data.recycler_id && String(offer.recycler_id) !== String(data.recycler_id)) {
+    throw new ApiError(403, 'You do not own this offer');
+  }
+
   if (offer.offer_status === 'accepted') {
     throw new ApiError(400, 'This offer was already accepted');
   }
@@ -322,14 +329,17 @@ export const respondToOffer = async (offerId, data) => {
     offered_price: data.offered_price,
     recycler_name: recyclerResult.rows[0]?.name ?? null,
   });
-  await syncOfferPriceToBoard({
-    recycler_id: offer.recycler_id,
-    lot_id: offer.lot_id,
-    offered_price: data.offered_price,
-    offer_id: offerId,
-  }).catch((err) =>
-    console.error('[offers] Failed to sync offer price to board:', err.message)
-  );
+  
+  if (data.offered_price) {
+    await syncOfferPriceToBoard({
+      recycler_id: offer.recycler_id,
+      lot_id: offer.lot_id,
+      offered_price: data.offered_price,
+      offer_id: offerId,
+    }).catch((err) =>
+      console.error('[offers] Failed to sync offer price to board:', err.message)
+    );
+  }
   return updated;
 };
 
@@ -340,53 +350,64 @@ export const respondToOffer = async (offerId, data) => {
  * @returns {Promise<Object>}
  */
 export const acceptOffer = async (offerId) => {
-  const offerResult = await query('SELECT * FROM offers WHERE id = $1', [offerId]);
-  if (offerResult.rows.length === 0) {
-    throw new ApiError(404, 'Offer not found');
+  await query('BEGIN');
+  try {
+    const offerResult = await query('SELECT * FROM offers WHERE id = $1 FOR UPDATE', [offerId]);
+    if (offerResult.rows.length === 0) {
+      throw new ApiError(404, 'Offer not found');
+    }
+    const offer = offerResult.rows[0];
+
+    if (offer.offer_status !== 'offered') {
+      throw new ApiError(400, `Offer cannot be accepted while ${offer.offer_status}`);
+    }
+
+    if (offer.offer_valid_until && new Date(offer.offer_valid_until) < new Date()) {
+      throw new ApiError(400, 'This offer has expired. Please request a fresh quote.');
+    }
+
+    // Reject all OTHER open offers on this lot (collector chose this recycler)
+    await query(
+      `UPDATE offers SET offer_status = 'rejected', responded_at = NOW()
+       WHERE lot_id = $1 AND id <> $2 AND offer_status IN ('requested', 'offered')`,
+      [offer.lot_id, offerId]
+    );
+
+    const acceptedResult = await query(
+      `UPDATE offers SET offer_status = 'accepted', responded_at = NOW() WHERE id = $1 RETURNING *`,
+      [offerId]
+    );
+
+    // Update observation statuses: winning offer -> ACCEPTED, other offers -> REJECTED
+    await updateObservationStatus({ lot_id: offer.lot_id, offer_id: offerId }, 'ACCEPTED').catch(() => {});
+    await updateObservationStatus({ lot_id: offer.lot_id, not_offer_id: offerId }, 'REJECTED').catch(() => {});
+
+    // Bind the transaction to the winning recycler at the agreed price
+    const txnResult = await query(
+      `UPDATE transactions
+       SET recycler_id = $1, quoted_price = $2, transaction_status = 'accepted'
+       WHERE lot_id = $3
+       RETURNING *`,
+      [offer.recycler_id, offer.offered_price, offer.lot_id]
+    );
+
+    const recyclerResult = await query('SELECT name FROM recyclers WHERE id = $1', [offer.recycler_id]);
+    await emitLotEvent(offer.lot_id, 'QUOTE_ACCEPTED', 'collector', offer.collector_id, {
+      offer_id: offer.id,
+      offered_price: offer.offered_price,
+      recycler_id: offer.recycler_id,
+      recycler_name: recyclerResult.rows[0]?.name ?? null,
+    });
+
+    await query('COMMIT');
+    return {
+      offer: acceptedResult.rows[0],
+      transaction: txnResult.rows[0],
+    };
+  } catch (err) {
+    await query('ROLLBACK');
+    throw err;
   }
-  const offer = offerResult.rows[0];
-
-  if (offer.offer_status !== 'offered') {
-    throw new ApiError(400, `Offer cannot be accepted while ${offer.offer_status}`);
-  }
-
-  // Reject all OTHER open offers on this lot (collector chose this recycler)
-  await query(
-    `UPDATE offers SET offer_status = 'rejected', responded_at = NOW()
-     WHERE lot_id = $1 AND id <> $2 AND offer_status IN ('requested', 'offered')`,
-    [offer.lot_id, offerId]
-  );
-
-  const acceptedResult = await query(
-    `UPDATE offers SET offer_status = 'accepted', responded_at = NOW() WHERE id = $1 RETURNING *`,
-    [offerId]
-  );
-
-  // Update observation statuses: winning offer -> ACCEPTED, other offers -> REJECTED
-  await updateObservationStatus({ lot_id: offer.lot_id, offer_id: offerId }, 'ACCEPTED').catch(() => {});
-  await updateObservationStatus({ lot_id: offer.lot_id, not_offer_id: offerId }, 'REJECTED').catch(() => {});
-
-  // Bind the transaction to the winning recycler at the agreed price
-  const txnResult = await query(
-    `UPDATE transactions
-     SET recycler_id = $1, quoted_price = $2, transaction_status = 'accepted'
-     WHERE lot_id = $3
-     RETURNING *`,
-    [offer.recycler_id, offer.offered_price, offer.lot_id]
-  );
-
-  const recyclerResult = await query('SELECT name FROM recyclers WHERE id = $1', [offer.recycler_id]);
-  await emitLotEvent(offer.lot_id, 'QUOTE_ACCEPTED', 'collector', offer.collector_id, {
-    offer_id: offer.id,
-    offered_price: offer.offered_price,
-    recycler_id: offer.recycler_id,
-    recycler_name: recyclerResult.rows[0]?.name ?? null,
-  });
-
-  return {
-    offer: acceptedResult.rows[0],
-    transaction: txnResult.rows[0],
-  };
 };
 
 /**
@@ -481,13 +502,13 @@ export const getAvailableLots = async (recyclerId) => {
   }
 
   const result = await query(
-    `SELECT m.lot_id, m.category, m.approx_weight_kg, m.description, m.created_at,
+    `SELECT m.lot_id, m.category, m.approx_weight_kg, m.description, m.created_at, m.collection_lat, m.collection_lng,
             t.quoted_price AS market_estimate, t.collection_location,
             c.name AS collector_name, c.operating_location
      FROM materials m
      JOIN transactions t ON m.lot_id = t.lot_id
      LEFT JOIN collectors c ON m.collector_id = c.id
-     WHERE t.transaction_status IN ('quoted', 'matched')
+     WHERE t.transaction_status = 'quoted'
        AND NOT COALESCE(m.is_cancelled, false)
        AND m.category = ANY($1::text[])
        AND NOT EXISTS (
@@ -503,17 +524,18 @@ export const getAvailableLots = async (recyclerId) => {
     [expandedMaterials, recyclerId]
   );
 
-  const recyclerLocStr = recycler.facility_location || recycler.service_area || '';
-  if (!recyclerLocStr) {
-    return result.rows;
-  }
-
-  const recyclerCity = resolvePricingLocation(recyclerLocStr);
+  const recyclerCity = resolvePricingLocation(
+    recycler.facility_location || recycler.service_area || '',
+    recycler.latitude,
+    recycler.longitude
+  );
 
   return result.rows.filter((lot) => {
-    const lotLoc = lot.collection_location || lot.operating_location || '';
-    if (!lotLoc) return true;
-    const lotCity = resolvePricingLocation(lotLoc);
+    const lotCity = resolvePricingLocation(
+      lot.collection_location || lot.operating_location || '',
+      lot.collection_lat,
+      lot.collection_lng
+    );
     return lotCity.toLowerCase() === recyclerCity.toLowerCase();
   });
 };

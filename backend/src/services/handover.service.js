@@ -353,8 +353,8 @@ export const initiateHandover = async (data) => {
   // ── Store handover photo in lot_images (never overwrites collection photo) ──
   for (const photoUrl of uploadedPhotos) {
     await insertLotImage(
-      lot_id, photoUrl, 'HANDOVER', 'recycler',
-      null, recycler_id, handoverGps
+      lot_id, photoUrl, 'HANDOVER', 'collector',
+      collector_id, null, handoverGps
     );
   }
 
@@ -408,13 +408,24 @@ export const initiateHandover = async (data) => {
  *
  * Evidence chain additions:
  *   1. traceability row updated — status='confirmed', weight, GPS, photo, scan flag
- *   2. lot_images row           — RECYCLER_CONFIRMATION type if photo provided
- *   3. lot_events               — FINAL_WEIGHT_RECORDED + HANDOVER_CONFIRMED
- *                                 + (HANDOVER_PHOTO if confirmation photo provided)
- *   4. transaction              — status upgraded to 'handed_over'
- *
- * @param {string} reference   - Handover reference number
- * @param {number} recyclerId  - Recycler confirming receipt
+const materialWeight = async (lotId) => {
+  try {
+    const res = await query(
+      `SELECT approx_weight_kg FROM materials WHERE lot_id = $1`,
+      [lotId]
+    );
+    return res.rows[0]?.approx_weight_kg ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Confirm a handover from the recycler's side.
+ * Validates the weight discrepancy before accepting.
+ * 
+ * @param {string} reference
+ * @param {string} recyclerId
  * @param {Object} extra       - { final_weight_kg, gps_lat, gps_lng, verification_photo, scan_verified }
  * @returns {Promise<Object>}
  */
@@ -493,7 +504,7 @@ export const confirmHandover = async (reference, recyclerId, extra = {}) => {
 
   const txn = txnRow.rows[0];
   const offer = offerRow.rows[0];
-  const initialWeight = txn?.quantity_weight_kg ? Number(txn.quantity_weight_kg) : (trace.approx_weight_kg ? Number(trace.approx_weight_kg) : null);
+  const initialWeight = txn?.quantity_weight_kg ? Number(txn.quantity_weight_kg) : (trace.weight_kg ? Number(trace.weight_kg) : null);
   
   let acceptedRate = null;
   if (offer?.offered_price != null) {
@@ -507,14 +518,24 @@ export const confirmHandover = async (reference, recyclerId, extra = {}) => {
     finalSaleValue = Math.round(acceptedRate * finalWeight * 100) / 100;
   }
 
-  await query(
-    `UPDATE transactions
-     SET transaction_status = 'handed_over',
-         cg_quantity_weight_kg = $1
-         ${finalSaleValue !== null ? ', final_price = $3' : ''}
-     WHERE lot_id = $2 AND transaction_status IN ('quoted', 'accepted', 'matched')`,
-    finalSaleValue !== null ? [finalWeight, trace.lot_id, finalSaleValue] : [finalWeight, trace.lot_id]
-  );
+  if (finalSaleValue !== null) {
+    await query(
+      `UPDATE transactions
+       SET transaction_status = 'handed_over',
+           cg_quantity_weight_kg = $1,
+           final_price = $3
+       WHERE lot_id = $2 AND transaction_status IN ('quoted', 'accepted', 'matched')`,
+      [finalWeight, trace.lot_id, finalSaleValue]
+    );
+  } else {
+    await query(
+      `UPDATE transactions
+       SET transaction_status = 'handed_over',
+           cg_quantity_weight_kg = $1
+       WHERE lot_id = $2 AND transaction_status IN ('quoted', 'accepted', 'matched')`,
+      [finalWeight, trace.lot_id]
+    );
+  }
 
   // Update observation status to COMPLETED with realized rate & sale value
   if (finalSaleValue != null) {
@@ -556,18 +577,6 @@ export const confirmHandover = async (reference, recyclerId, extra = {}) => {
   }, confirmGps);
 
   return updatedTrace.rows[0];
-};
-
-const materialWeight = async (lotId) => {
-  try {
-    const res = await query(
-      `SELECT approx_weight_kg FROM materials WHERE lot_id = $1`,
-      [lotId]
-    );
-    return res.rows[0]?.approx_weight_kg ?? null;
-  } catch {
-    return null;
-  }
 };
 
 /**

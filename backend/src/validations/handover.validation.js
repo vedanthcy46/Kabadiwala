@@ -35,8 +35,8 @@ export const initiateHandoverSchema = {
     recycler_id: z.coerce.number().int().positive(),
     photo_refs: z.array(z.string()).optional().default([]),
     weight_kg: z.coerce.number().positive(),
-    gps_lat: z.coerce.number().min(-90).max(90),
-    gps_lng: z.coerce.number().min(-180).max(180),
+    gps_lat: z.coerce.number().min(-90).max(90).optional(),
+    gps_lng: z.coerce.number().min(-180).max(180).optional(),
     handover_location: z.string().optional(),
   }),
 };

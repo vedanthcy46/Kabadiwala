@@ -1,0 +1,297 @@
+.find-recyclers-page {
+  padding-bottom: var(--space-8, 2rem);
+}
+
+.find-recyclers__header {
+  margin-bottom: var(--space-6, 1.5rem);
+}
+
+.find-recyclers__back-btn {
+  margin-bottom: var(--space-2, 0.5rem);
+  padding: 0;
+  color: var(--color-primary, #1f78c8);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.find-recyclers__control-panel {
+  padding: var(--space-5, 1.25rem);
+  margin-bottom: var(--space-6, 1.5rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 1rem);
+  background: var(--color-surface, #ffffff);
+  border: 1px solid var(--color-border, #e2e8f0);
+}
+
+.find-recyclers__gps-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3, 0.75rem);
+  padding-bottom: var(--space-4, 1rem);
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+}
+
+.find-recyclers__gps-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2, 0.5rem);
+}
+
+.find-recyclers__gps-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--color-primary-light, #e0f2fe);
+  color: var(--color-primary, #0284c7);
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 600;
+  border-radius: var(--radius-full, 9999px);
+}
+
+.find-recyclers__coords {
+  font-size: var(--text-sm, 0.875rem);
+  font-weight: 600;
+  color: var(--color-text-primary, #0f172a);
+}
+
+.find-recyclers__city-name {
+  font-size: var(--text-sm, 0.875rem);
+  color: var(--color-text-muted, #64748b);
+}
+
+.find-recyclers__gps-btn {
+  font-size: var(--text-sm, 0.875rem);
+  font-weight: 600;
+  padding: 8px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.find-recyclers__gps-alert {
+  padding: 8px 12px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  border-radius: var(--radius-md, 8px);
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 500;
+}
+
+.find-recyclers__cities-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2, 0.5rem);
+}
+
+.find-recyclers__label {
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 600;
+  color: var(--color-text-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.find-recyclers__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 4px 10px;
+  border-radius: var(--radius-full, 9999px);
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 500;
+  border: 1px solid var(--color-border, #cbd5e1);
+  background: var(--color-bg, #f8fafc);
+  color: var(--color-text-primary, #334155);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chip:hover {
+  background: var(--color-surface, #ffffff);
+  border-color: var(--color-primary, #0284c7);
+}
+
+.chip--active {
+  background: var(--color-primary, #0284c7) !important;
+  color: #ffffff !important;
+  border-color: var(--color-primary, #0284c7) !important;
+}
+
+.find-recyclers__filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4, 1rem);
+  padding-top: var(--space-2, 0.5rem);
+}
+
+.find-recyclers__filter-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.find-recyclers__results-header {
+  margin-bottom: var(--space-3, 0.75rem);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.find-recyclers__map-card {
+  height: 400px;
+  margin-bottom: var(--space-6, 1.5rem);
+  overflow: hidden;
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1));
+}
+
+.find-recyclers__empty-state {
+  text-align: center;
+  padding: var(--space-8, 2rem) var(--space-4, 1rem);
+}
+
+.find-recyclers__cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-4, 1rem);
+}
+
+.find-recycler-card {
+  padding: var(--space-4, 1rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+  border: 1.5px solid var(--color-border, #e2e8f0);
+}
+
+.find-recycler-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1));
+  border-color: var(--color-primary-light, #93c5fd);
+}
+
+.find-recycler-card--selected {
+  border-color: var(--color-primary, #0284c7) !important;
+  background: #f0f9ff !important;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.2) !important;
+}
+
+.find-recycler-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-3, 0.75rem);
+}
+
+.find-recycler-card__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.find-recycler-card__name {
+  font-size: var(--text-base, 1rem);
+  font-weight: 700;
+  color: var(--color-text-primary, #0f172a);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.find-recycler-card__badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.find-recycler-card__dist-badge {
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 700;
+  color: #15803d;
+  background: #dcfce7;
+  padding: 2px 8px;
+  border-radius: var(--radius-full, 9999px);
+}
+
+.find-recycler-card__details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-text-secondary, #475569);
+  margin-bottom: var(--space-3, 0.75rem);
+}
+
+.find-recycler-card__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.find-recycler-card__icon {
+  flex-shrink: 0;
+}
+
+.find-recycler-card__text {
+  line-height: 1.4;
+}
+
+.find-recycler-card__materials {
+  margin-top: auto;
+  padding-top: var(--space-2, 0.5rem);
+  border-top: 1px dashed var(--color-border, #e2e8f0);
+}
+
+.find-recycler-card__mat-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--color-text-muted, #94a3b8);
+  letter-spacing: 0.5px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.find-recycler-card__mat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mat-tag {
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.find-recycler-card__footer {
+  margin-top: var(--space-3, 0.75rem);
+  padding-top: var(--space-2, 0.5rem);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.find-recycler-card__dir-btn {
+  font-size: var(--text-xs, 0.75rem);
+  padding: 4px 10px;
+}

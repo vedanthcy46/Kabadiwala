@@ -76,7 +76,7 @@ function toNumberIfNumeric(value) {
 // comparisons, etc. Skipped keys are identifiers / codes that must stay strings.
 function normalize(value, key) {
   if (Array.isArray(value)) {
-    return value.map((item) => normalize(item));
+    return value.map((item) => normalize(item, key));
   }
   if (value && typeof value === 'object') {
     const out = {};
@@ -92,27 +92,30 @@ function normalize(value, key) {
 }
 
 async function request(path, options = {}) {
-  try {
-    const res = await fetch(`${BASE}${path}`, {
-      headers: { 'Content-Type': 'application/json', ...options.headers },
-      ...options,
-    });
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+    ...options,
+  });
 
-    let json = null;
-    const isJson = res.headers.get('content-type')?.includes('application/json');
-    if (isJson) {
+  let json = null;
+  const isJson = res.headers.get('content-type')?.includes('application/json');
+  
+  if (isJson) {
+    try {
       json = await res.json();
-    }
-
-    if (!res.ok) {
-      const err = new Error(json?.message || `HTTP ${res.status}`);
+    } catch (e) {
+      const err = new Error('Failed to parse JSON response');
       err.status = res.status;
       throw err;
     }
-    return normalize(json);
-  } catch (err) {
+  }
+
+  if (!res.ok) {
+    const err = new Error(json?.message || `HTTP ${res.status}`);
+    err.status = res.status;
     throw err;
   }
+  return normalize(json);
 }
 
 // ── Health ──────────────────────────────────────────────────────────────────
@@ -131,6 +134,18 @@ export const getMatchedRecyclers = ({ category, lat, lng, maxDistanceKm, locatio
   if (location) params.set('location', location);
   if (maxDistanceKm != null) params.set('maxDistanceKm', String(maxDistanceKm));
   return request(`/recyclers/match?${params.toString()}`);
+};
+
+export const getNearbyRecyclers = ({ lat, lng, radiusKm, limit, material, search, location } = {}) => {
+  const params = new URLSearchParams();
+  if (lat != null && Number.isFinite(Number(lat))) params.set('lat', String(lat));
+  if (lng != null && Number.isFinite(Number(lng))) params.set('lng', String(lng));
+  if (radiusKm != null) params.set('radiusKm', String(radiusKm));
+  if (limit != null) params.set('limit', String(limit));
+  if (material) params.set('material', material);
+  if (search) params.set('search', search);
+  if (location) params.set('location', location);
+  return request(`/recyclers/nearby?${params.toString()}`);
 };
 
 export const getAllRecyclers = ({ limit, location, name, authorization_status } = {}) => {
@@ -306,6 +321,12 @@ export const updateAiFeedback = (id, payload) =>
 // GET /v1/ai/stats — per-category accuracy (admin / dataset governance)
 export const getAiStats = () => request('/ai/stats');
 
+// GET /v1/ai/model — get continuous-learning active model info (version, accuracy, priors, centroids)
+export const getAiModel = () => request('/ai/model');
+
+// POST /v1/ai/retrain — trigger full model retraining on all validated feedback samples
+export const retrainAiModel = () => request('/ai/retrain', { method: 'POST' });
+
 // POST /v1/ai/classify — pluggable material classifier (cloud model or feature-vector heuristic)
 export const classifyAi = (payload) =>
   request('/ai/classify', { method: 'POST', body: JSON.stringify(payload) });
@@ -392,6 +413,7 @@ export async function quoteLot({ lotId, recyclerId, offeredPrice, existingOfferI
   let offerId = existingOfferId;
   if (!offerId) {
     const created = await requestQuote(lotId, recyclerId);
+    if (!created?.data?.id) throw new Error('Failed to create quote request: id missing from response');
     offerId = created.data.id;
   }
   return respondToOffer(offerId, offeredPrice);

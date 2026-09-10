@@ -11,6 +11,7 @@ import { getSession } from './services/auth';
 import CollectorDashboard from './collector/Dashboard';
 import CreateLot from './collector/CreateLot';
 import MatchedRecyclers from './collector/MatchedRecyclers';
+import FindRecyclers from './collector/FindRecyclers';
 import PriceDiscovery from './collector/PriceDiscovery';
 import CollectorLotDetail from './collector/LotDetail';
 import CollectorTraceability from './collector/Traceability';
@@ -87,6 +88,9 @@ function AppInner() {
           } />
           <Route path="/collector/matched-recyclers" element={
             <ProtectedRoute role="collector"><MatchedRecyclers /></ProtectedRoute>
+          } />
+          <Route path="/collector/find-recyclers" element={
+            <ProtectedRoute role="collector"><FindRecyclers /></ProtectedRoute>
           } />
           <Route path="/collector/prices" element={
             <ProtectedRoute role="collector"><PriceDiscovery /></ProtectedRoute>

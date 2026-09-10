@@ -1,6 +1,7 @@
 import { query } from '../db.js';
 import { ApiError } from '../utils/ApiError.js';
 import { CITY_COORDS } from './location.service.js';
+import { getCategoryAliases } from '../utils/categoryAliases.js';
 
 export const BENCHMARK_HUBS = [
   { name: 'Bengaluru', lat: 12.9716, lng: 77.5946 },
@@ -18,7 +19,9 @@ function findClosestHub(lat, lng) {
   let closest = 'Bengaluru';
   let minD = Infinity;
   for (const hub of BENCHMARK_HUBS) {
-    const d = Math.hypot(hub.lat - lat, hub.lng - lng);
+    const dlat = hub.lat - lat;
+    const dlng = (hub.lng - lng) * Math.cos(lat * Math.PI / 180);
+    const d = Math.hypot(dlat, dlng);
     if (d < minD) {
       minD = d;
       closest = hub.name;
@@ -76,7 +79,6 @@ export function resolvePricingLocation(locStr, lat = null, lng = null) {
  */
 export const calculateInstantValuation = async (category, location, weight) => {
   const normalizedLoc = resolvePricingLocation(location);
-  const { getCategoryAliases } = await import('../utils/categoryAliases.js');
   const aliases = getCategoryAliases(category);
 
   const fetchRows = (loc) => query(
@@ -124,7 +126,7 @@ export const calculateInstantValuation = async (category, location, weight) => {
   }
 
   if (priceResult.rows.length === 0 || priceResult.rows[0]?.buying_price == null) {
-    throw new ApiError(404, `No pricing data found for ${category} in ${location}`);
+    throw new ApiError(404, `No pricing data found for ${category} in ${normalizedLoc || location}`);
   }
 
   const rows = priceResult.rows;
@@ -139,8 +141,12 @@ export const calculateInstantValuation = async (category, location, weight) => {
   const rawMax = Math.max(...rows.map(r => parseFloat(r.market_range_high ?? r.buying_price)));
 
   // Trim abnormal outliers (restrict range to normal trading band around benchmark)
-  const rangeLow = Math.max(Math.round(unitPrice * 0.88 * 100) / 100, Math.round(rawMin * 100) / 100);
-  const rangeHigh = Math.min(Math.round(unitPrice * 1.12 * 100) / 100, Math.round(rawMax * 100) / 100);
+  let rangeLow = Math.max(Math.round(unitPrice * 0.88 * 100) / 100, Math.round(rawMin * 100) / 100);
+  let rangeHigh = Math.min(Math.round(unitPrice * 1.12 * 100) / 100, Math.round(rawMax * 100) / 100);
+  
+  if (rangeHigh < rangeLow) {
+    rangeHigh = rangeLow;
+  }
 
   const estimatedValue = Math.round(unitPrice * weight * 100) / 100;
 

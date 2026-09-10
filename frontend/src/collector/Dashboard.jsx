@@ -119,7 +119,7 @@ export default function CollectorDashboard() {
             <span className="quick-action-card__label">{t('dashboard.priceBoard')}</span>
             <span className="quick-action-card__desc">{t('dashboard.priceBoardDesc')}</span>
           </Link>
-          <Link to="/collector/matched-recyclers" className="quick-action-card">
+          <Link to="/collector/find-recyclers" className="quick-action-card">
             
             <span className="quick-action-card__label">{t('dashboard.findRecyclers')}</span>
             <span className="quick-action-card__desc">{t('dashboard.findRecyclersDesc')}</span>

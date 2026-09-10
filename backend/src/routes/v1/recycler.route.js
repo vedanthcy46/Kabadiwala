@@ -21,6 +21,12 @@ router.get(
   recyclerController.getMatchedRecyclers
 );
 
+// Nearby authorized recyclers (proximity only — no prices / valuation)
+router.get(
+  '/nearby',
+  recyclerController.getNearbyRecyclers
+);
+
 // Recycler self-onboarding — creates an application in 'pending' state
 router.post(
   '/onboard',

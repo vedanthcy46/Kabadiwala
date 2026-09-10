@@ -2,6 +2,7 @@ import express from 'express';
 import {
   recordAiFeedback, updateAiFeedback, getAiFeedbackStats,
   getAiDatasetSummary, getAiDatasetSamples, exportAiDatasetCsv,
+  getActiveModel, trainModelFromFeedback,
 } from '../../services/ai.service.js';
 import { classify } from '../../services/aiInference.service.js';
 
@@ -32,6 +33,30 @@ router.get('/stats', async (req, res, next) => {
   try {
     const stats = await getAiFeedbackStats();
     res.json({ success: true, data: stats });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /v1/ai/model — inspect current continuous-learning model version, accuracy priors & centroids
+router.get('/model', async (req, res, next) => {
+  try {
+    const model = getActiveModel();
+    res.json({ success: true, data: model });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /v1/ai/retrain — trigger full model retraining on all validated feedback samples
+router.post('/retrain', async (req, res, next) => {
+  try {
+    const updatedModel = await trainModelFromFeedback();
+    res.json({
+      success: true,
+      message: `Model successfully retrained on ${updatedModel.totalSamples} validated samples.`,
+      data: updatedModel,
+    });
   } catch (err) {
     next(err);
   }

@@ -51,7 +51,7 @@ export const syncRecyclerExpiryStatuses = async () => {
  * @returns {Promise<Object>}
  */
 export const adminSummary = async () => {
-  await syncRecyclerExpiryStatuses();
+  syncRecyclerExpiryStatuses().catch(console.error);
   const result = await query(
     `SELECT
        (SELECT COUNT(*) FROM collectors)            AS collectors,

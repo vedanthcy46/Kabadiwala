@@ -244,9 +244,9 @@ export default function PriceDiscovery() {
     hi: { Bengaluru: 'बेंगलुरु', Mysuru: 'मैसूर', Chennai: 'चेन्नई', Hyderabad: 'हैदराबाद', Mumbai: 'मुंबई', Delhi: 'दिल्ली', Pune: 'पुणे', Kolkata: 'कोलकाता', Ahmedabad: 'अहमदाबाद', Jaipur: 'जयपुर', Kochi: 'कोच्चि', Coimbatore: 'कोयम्बटूर' },
     ta: { Bengaluru: 'பெங்களூரு', Mysuru: 'மைசூர்', Chennai: 'சென்னை', Hyderabad: 'ஹைதராபாத்', Mumbai: 'மும்பை', Delhi: 'தில்லி', Pune: 'புனே', Kolkata: 'கொல்கத்தா', Ahmedabad: 'அகமதாபாத்', Jaipur: 'ஜெய்ப்பூர்', Kochi: 'கொச்சி' },
     te: { Bengaluru: 'బెంగళూరు', Mysuru: 'మైసూరు', Chennai: 'చెన్నై', Hyderabad: 'హైదరాబాద్', Mumbai: 'ముంబై', Delhi: 'ఢిల్లీ', Pune: 'పుణె', Kolkata: 'కోల్‌కతా', Ahmedabad: 'అహ్మదాబాద్', Jaipur: 'జైపూర్', Kochi: 'కొచ్చి' },
-    ml: { Bengaluru: 'ബെംഗളൂരു', Mysuru: 'മൈസൂരു', Chennai: 'ചെന്നൈ', Hyderabad: 'ഹൈദരാബാദ്', Mumbai: 'മുംബൈ', Delhi: 'ഡൽഹി', Pune: 'പൂനെ', Kolkata: 'കൊൽക്കത്ത', Kochi: 'കൊച്ചി' },
+    ml: { Bengaluru: 'ബെംഗളൂരു', Mysuru: 'മൈസൂരു', Chennai: 'ചെന്നൈ', Hyderabad: 'ഹൈദരാബാദ്', Mumbai: 'മുംബൈ', Delhi: 'ഡൽഹി', Pune: 'പൂനെ', Kolkata: 'കൊൽക്കത്ത', Ahmedabad: 'അഹമ്മദാബാദ്', Jaipur: 'ജയ്പൂർ', Kochi: 'കൊച്ചി' },
     bn: { Bengaluru: 'বেঙ্গালুরু', Kolkata: 'কলকাতা', Delhi: 'দিল্লি', Mumbai: 'মুম্বই', Chennai: 'চেন্নাই', Hyderabad: 'হায়দরাবাদ', Pune: 'পুনে', Ahmedabad: 'আহমেদাবাদ', Jaipur: 'জয়পুর', Kochi: 'কোচি' },
-    mr: { Bengaluru: 'बंगळुरू', Mumbai: 'मुंबई', Pune: 'पुणे', Delhi: 'दिल्ली', Nagpur: 'नागपूर', Nashik: 'नाशिक', Kolkata: 'कोलकाता', Chennai: 'चेन्नई' },
+    mr: { Bengaluru: 'बंगळुरू', Mumbai: 'मुंबई', Pune: 'पुणे', Delhi: 'दिल्ली', Hyderabad: 'हैदराबाद', Ahmedabad: 'अहमदाबाद', Jaipur: 'जयपूर', Nagpur: 'नागपूर', Nashik: 'नाशिक', Kolkata: 'कोलकाता', Chennai: 'चेन्नई' },
   };
 
   function cleanSpeechCategory(str) {

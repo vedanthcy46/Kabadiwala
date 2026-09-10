@@ -56,7 +56,7 @@ function MapController({ center, recyclers, selectedId }) {
   return null;
 }
 
-export default function RecyclersMap({ recyclers, center, radiusKm, selectedId, onSelect }) {
+export default function RecyclersMap({ recyclers, center, radiusKm, selectedId, onSelect, showPrice = true }) {
   // Disambiguate overlapping recycler locations with a small spiral offset (~150m–500m)
   // so every matched recycler renders as a distinct visible pin on the map.
   const coordCounts = {};
@@ -146,8 +146,8 @@ export default function RecyclersMap({ recyclers, center, radiusKm, selectedId, 
               <div style={{ margin: '4px 0', fontSize: '0.85em', color: 'var(--color-text-muted, #666)' }}>
                 {r.facility_location && <div>🏢 {r.facility_location}</div>}
                 {r.distance_km != null ? `🚗 ${Number(r.distance_km).toFixed(1)} km away` : ''}
-                {r.offered_rate ? ` · 💰 ₹${r.offered_rate}/kg` : ''}
-                {r.suitability != null ? ` · ⭐ ${Math.round(Number(r.suitability))}% match` : ''}
+                {showPrice && r.offered_rate ? ` · 💰 ₹${r.offered_rate}/kg` : ''}
+                {showPrice && r.suitability != null ? ` · ⭐ ${Math.round(Number(r.suitability))}% match` : ''}
               </div>
             </Popup>
           </Marker>

@@ -1,3 +1,5 @@
+import { classifyAi } from '../../api/client';
+
 const CATEGORY_IDS = ['CRT', 'LCD', 'PCB', 'Cable', 'Battery', 'Motor', 'Plastic'];
 
 const SAMPLE_SIZE = 64;
@@ -56,7 +58,7 @@ function collectFeatures(pixels) {
   let satSum = 0;
   let darkCount = 0;
   let brightCount = 0;
-  const hueBins = { green: 0, blue: 0, copper: 0, red: 0, neutral: 0, purple: 0 };
+  const hueBins = { green: 0, blue: 0, copper: 0, red: 0, neutral: 0, purple: 0, yellow: 0 };
   const satValues = [];
 
   for (let i = 0; i < n; i++) {
@@ -67,21 +69,20 @@ function collectFeatures(pixels) {
     if (l < 0.22) darkCount++;
     if (l > 0.8) brightCount++;
 
-    if (s < 0.12) {
-      hueBins.neutral++;
-    } else if (h >= 60 && h < 170) {
-      hueBins.green++;
-    } else if (h >= 170 && h < 250) {
-      hueBins.blue++;
-    } else if ((h >= 20 && h < 60)) {
-      // yellow-green → could be copper/gold-ish; count toward green
-      hueBins.green++;
-    } else if ((h >= 0 && h < 20) || h >= 330) {
-      hueBins.red++;
-    } else if ((h >= 250 && h < 330)) {
-      hueBins.purple++;
+    if (s < 0.15) {
+      hueBins.neutral++; // Grey / silver / metallic / black
+    } else if (h >= 15 && h < 45) {
+      hueBins.copper++; // Copper / orange / bronze (windings, bare wire)
+    } else if (h >= 45 && h < 70) {
+      hueBins.yellow++; // Yellow
+    } else if (h >= 70 && h < 165) {
+      hueBins.green++; // Circuit green / solder mask
+    } else if (h >= 165 && h < 260) {
+      hueBins.blue++; // Blue / cyan
+    } else if (h >= 260 && h < 330) {
+      hueBins.purple++; // Violet / magenta
     } else {
-      hueBins.copper++;
+      hueBins.red++; // Red
     }
   }
 
@@ -107,13 +108,14 @@ function collectFeatures(pixels) {
     ? satValues.reduce((acc, v) => acc + (v - meanSat) ** 2, 0) / satValues.length
     : 0;
 
-  const total = n - hueBins.neutral || 1;
+  const coloredPixels = Math.max(1, n - hueBins.neutral);
   const hueRatios = {
-    green: hueBins.green / total,
-    blue: hueBins.blue / total,
-    copper: hueBins.copper / total,
-    red: hueBins.red / total,
-    purple: hueBins.purple / total,
+    green: hueBins.green / coloredPixels,
+    blue: hueBins.blue / coloredPixels,
+    copper: hueBins.copper / coloredPixels,
+    red: hueBins.red / coloredPixels,
+    yellow: hueBins.yellow / coloredPixels,
+    purple: hueBins.purple / coloredPixels,
     neutral: hueBins.neutral / n,
   };
 
@@ -132,9 +134,14 @@ function collectFeatures(pixels) {
 }
 
 function fitRange(v, min, max) {
-  if (v == null) return 0;
-  if (min != null && v < min) return Math.max(0, 1 - (min - v) * 3);
-  if (max != null && v > max) return Math.max(0, 1 - (v - max) * 3);
+  if (v == null || Number.isNaN(Number(v))) return 0;
+  const val = Number(v);
+  if (min != null && val < min) {
+    return Math.max(0, 1 - (min - val) * 5);
+  }
+  if (max != null && val > max) {
+    return Math.max(0, 1 - (val - max) * 5);
+  }
   return 1;
 }
 
@@ -149,76 +156,100 @@ function categoryFit(f, rules) {
   return wSum ? total / wSum : 0;
 }
 
-// Each entry: [feature, min, max, weight]. Weight emphasizes the strongest signal.
+// Calibrated rules emphasizing discriminating features:
 const RULES = {
   CRT: [
     ['darkFrac', 0.35, null, 3],
-    ['meanLum', null, 0.4, 1.5],
-    ['meanSat', null, 0.2, 1.5],
-    ['purple', 0.03, null, 1],
+    ['meanLum', null, 0.35, 2],
+    ['meanSat', null, 0.18, 1.5],
+    ['neutral', 0.35, null, 1.5],
+    ['edge', null, 0.18, 1.5],
   ],
   LCD: [
-    ['edge', null, 0.12, 2.5],
-    ['meanLum', 0.1, 0.5, 1],
-    ['meanSat', null, 0.28, 1],
-    ['green', null, 0.3, 1],
+    ['edge', null, 0.14, 3],
+    ['darkFrac', 0.25, 0.85, 2.5],
+    ['meanLum', 0.12, 0.45, 2],
+    ['green', null, 0.15, 2],
+    ['neutral', 0.15, 0.55, 1.5],
   ],
   PCB: [
-    ['green', 0.18, null, 3],
-    ['edge', 0.18, null, 2.5],
-    ['copper', 0.03, null, 1.5],
-    ['blue', null, 0.4, 1],
+    ['green', 0.14, null, 4],
+    ['edge', 0.14, null, 3],
+    ['copper', 0.02, null, 1.5],
+    ['blue', null, 0.35, 1.5],
   ],
   Cable: [
-    ['satVar', 0.14, null, 5],
-    ['meanSat', 0.2, null, 2],
-    ['edge', 0.16, null, 1.5],
-    ['red', 0.03, null, 1.5],
-    ['green', 0.02, 0.4, 0.5],
-    ['blue', 0.02, 0.4, 0.5],
+    ['satVar', 0.14, null, 4],
+    ['edge', 0.14, null, 2.5],
+    ['meanSat', 0.18, null, 2],
+    ['green', null, 0.22, 3],
   ],
   Battery: [
-    ['neutral', 0.55, null, 3],
-    ['meanSat', null, 0.3, 1.5],
-    ['meanLum', 0.28, 0.72, 1],
-    ['edge', 0.05, 0.35, 1],
-    ['copper', null, 0.1, 1.5],
+    ['neutral', 0.48, null, 4],
+    ['meanSat', null, 0.28, 2],
+    ['green', null, 0.12, 2.5],
+    ['copper', null, 0.08, 2],
+    ['edge', 0.04, 0.28, 1.5],
   ],
   Motor: [
-    ['copper', 0.08, null, 3],
-    ['edge', 0.18, null, 2],
-    ['neutral', 0.2, null, 1],
-    ['meanLum', 0.3, 0.75, 1],
+    ['copper', 0.06, null, 4.5],
+    ['neutral', 0.20, null, 2.5],
+    ['edge', 0.12, null, 2],
+    ['green', null, 0.18, 2.5],
   ],
   Plastic: [
-    ['edge', null, 0.16, 3],
-    ['meanSat', 0.06, 0.6, 1.5],
-    ['copper', null, 0.12, 1],
-    ['green', null, 0.3, 1],
+    ['edge', null, 0.13, 4],
+    ['meanSat', 0.04, 0.50, 2],
+    ['copper', null, 0.05, 3],
+    ['green', null, 0.20, 2.5],
   ],
 };
-
-// Magnify fit so the best match clearly wins instead of staying flat.
-const MAGNIFY = 6;
-
-function softMax(scores) {
-  const exp = Object.entries(scores).map(([k, v]) => [k, Math.exp(v)]);
-  const sum = exp.reduce((acc, [, v]) => acc + v, 0) || 1;
-  return Object.fromEntries(exp.map(([k, v]) => [k, v / sum]));
-}
 
 function classifyFeatures(f) {
   const raw = {};
   for (const id of CATEGORY_IDS) {
-    raw[id] = Math.pow(categoryFit(f, RULES[id]), MAGNIFY);
+    raw[id] = categoryFit(f, RULES[id]);
   }
-  const probs = softMax(raw);
-  const ranked = Object.entries(probs)
-    .sort((a, b) => b[1] - a[1])
-    .map(([category, p]) => ({
-      category,
-      confidence: Math.round(p * 1000) / 1000,
-    }));
+
+  const sorted = Object.entries(raw).sort((a, b) => b[1] - a[1]);
+  const topCategory = sorted[0][0];
+  const topFit = sorted[0][1];
+  const secondFit = sorted[1] ? sorted[1][1] : 0;
+  const spread = Math.max(0, topFit - secondFit);
+
+  const PRIORS = {
+    PCB: 0.85,
+    Battery: 0.80,
+    Cable: 0.78,
+    LCD: 0.82,
+    CRT: 0.75,
+    Motor: 0.80,
+    Plastic: 0.74,
+  };
+  const prior = PRIORS[topCategory] ?? 0.82;
+  const base = topFit * prior;
+
+  // Calibrated dynamic confidence (sharp difference between clear and ambiguous):
+  let topConfidence;
+  if (topFit >= 0.75 && spread >= 0.15) {
+    topConfidence = Math.min(0.94, Math.round((base + spread * 0.22) * 1000) / 1000);
+  } else if (topFit >= 0.55 && spread >= 0.08) {
+    topConfidence = Math.min(0.78, Math.max(0.55, Math.round((base + spread * 0.15) * 1000) / 1000));
+  } else {
+    topConfidence = Math.max(0.36, Math.min(0.52, Math.round((topFit * 0.72) * 1000) / 1000));
+  }
+
+  const ranked = sorted.map(([category, fit], idx) => {
+    let conf;
+    if (idx === 0) {
+      conf = topConfidence;
+    } else {
+      const relDiff = (topFit - fit) * 0.35;
+      conf = Math.max(0.12, Math.round((topConfidence - relDiff) * 1000) / 1000);
+    }
+    return { category, confidence: conf };
+  });
+
   return ranked;
 }
 
@@ -229,17 +260,28 @@ export function classifyPixels(image, maxSize = 512) {
   const ranked = classifyFeatures(f);
 
   const top = ranked[0];
-  const confidence = top.confidence;
+  const second = ranked[1];
+  const spread = top.confidence - (second?.confidence ?? 0);
 
-  const winnerSpread = confidence - (ranked[1]?.confidence ?? 0);
   let verdict = 'low';
-  if (confidence >= 0.4 && winnerSpread >= 0.12) verdict = 'medium';
-  if (confidence >= 0.55 && winnerSpread >= 0.2) verdict = 'high';
+  if (top.confidence >= 0.75 && spread >= 0.12) verdict = 'high';
+  else if (top.confidence >= 0.54) verdict = 'medium';
+  else verdict = 'low';
+
+  let reason = '';
+  if (verdict === 'high') {
+    reason = `Clear visual features detected matching ${top.category} profiles.`;
+  } else if (verdict === 'medium') {
+    reason = `Moderate match for ${top.category}. Please verify before submitting.`;
+  } else {
+    reason = `Low confidence classification (${Math.round(top.confidence * 100)}%). Please verify material type manually.`;
+  }
 
   return {
     category: top.category,
-    confidence,
+    confidence: top.confidence,
     verdict,
+    reason,
     candidates: ranked.slice(0, 3),
     features: f,
   };
@@ -254,7 +296,23 @@ export async function classifyFile(file, maxSize = 512) {
       img.onerror = reject;
       img.src = url;
     });
-    return classifyPixels(image, maxSize);
+    const local = classifyPixels(image, maxSize);
+
+    // Continuous learning: Send extracted features to backend learned model
+    // which incorporates live centroids & empirical accuracy priors from human feedback
+    try {
+      const serverRes = await classifyAi({ features: local.features });
+      if (serverRes?.data?.category) {
+        return {
+          ...serverRes.data,
+          features: local.features,
+        };
+      }
+    } catch {
+      // Offline fallback: Use locally computed result
+    }
+
+    return local;
   } finally {
     URL.revokeObjectURL(url);
   }

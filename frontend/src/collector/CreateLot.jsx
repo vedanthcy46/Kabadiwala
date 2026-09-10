@@ -338,6 +338,7 @@ export default function CreateLot() {
         return;
       }
 
+      setCreating(false);
       navigate('/collector/matched-recyclers', {
         state: {
           lotId: r.data?.lot?.lot_id,
@@ -551,19 +552,30 @@ export default function CreateLot() {
             )}
 
             {!classifying && classify && !classifyDismissed && (
-              <div className="p2-ai-banner p2-ai-banner--suggest animate-slide-up" role="region" aria-label="AI classification suggestion">
+              <div className={`p2-ai-banner p2-ai-banner--suggest p2-ai-banner--${classify.verdict} animate-slide-up`} role="region" aria-label="AI classification suggestion">
                 <div className="p2-ai-banner__top">
-                  <div className="p2-ai-banner__sparkle" aria-hidden="true">✨</div>
+                  <div className="p2-ai-banner__sparkle" aria-hidden="true">{classify.verdict === 'low' ? '⚠️' : '✨'}</div>
                   <div className="p2-ai-banner__body">
-                    <div className="p2-ai-banner__category">
-                      {t('createLot.classification.detected', { label: catMeta(classify.category)?.label || classify.category })}
-                      <span className={`p2-ai-pill p2-ai-pill--${classify.verdict}`}>
+                    <div className="p2-ai-banner__category" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <span>
+                        {t('createLot.classification.detected', { label: catMeta(classify.category)?.label || classify.category })}
+                      </span>
+                      <span className={`p2-ai-pill p2-ai-pill--${classify.verdict}`} title="AI Detection Confidence">
                         {Math.round(classify.confidence * 100)}% {t('createLot.classification.match')}
                       </span>
+                      {classify.modelVersion && (
+                        <span className="p2-ai-pill" style={{ fontSize: '0.72rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--color-primary, #6366f1)', border: '1px solid rgba(99, 102, 241, 0.25)', padding: '2px 6px' }}>
+                          ⚡ Model {classify.modelVersion}
+                        </span>
+                      )}
                     </div>
-                    {classify.reason && (
+                    {classify.verdict === 'low' ? (
+                      <p className="p2-ai-banner__reason" style={{ color: 'var(--color-warning, #d97706)', fontWeight: '500', marginTop: '4px' }}>
+                        ⚠️ Low detection confidence ({Math.round(classify.confidence * 100)}%). Please verify the material carefully or select a different category below.
+                      </p>
+                    ) : classify.reason ? (
                       <p className="p2-ai-banner__reason">{classify.reason}</p>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -607,6 +619,10 @@ export default function CreateLot() {
                       setCategory(cat.id);
                       setSubCategory('');
                       setError('');
+                      if (aiFeedbackId && classify) {
+                        const outcome = cat.id === classify.category ? 'accepted' : 'corrected';
+                        updateAiFeedback(aiFeedbackId, { human_category: cat.id, outcome }).catch(() => {});
+                      }
                     }}
                     aria-pressed={isSelected}
                   >
@@ -736,6 +752,8 @@ export default function CreateLot() {
                 value={LOCATIONS.includes(location) ? location : ''}
                 onChange={e => {
                   setLocation(e.target.value);
+                  setCollectionLat(null);
+                  setCollectionLng(null);
                   setGpsHint('');
                 }}
               >

@@ -45,8 +45,8 @@ export default function RecyclerDashboard() {
   }, []);
 
   // Use transaction_status (the real backend enum: quoted | matched | handed_over | confirmed)
-  const pending   = lots.filter(l => l.transaction_status === 'matched').length;
-  const confirmed = lots.filter(l => l.transaction_status === 'confirmed' || l.transaction_status === 'handed_over').length;
+  const pending   = lots.filter(l => l.transaction_status === 'matched' || l.transaction_status === 'handed_over').length;
+  const confirmed = lots.filter(l => l.transaction_status === 'confirmed').length;
 
   return (
     <div className="container">

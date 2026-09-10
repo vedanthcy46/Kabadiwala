@@ -22,8 +22,17 @@ import { resolvePricingLocation } from './valuation.service.js';
  * @param {string} [location] - Location name if available
  * @returns {Promise<Array>}
  */
-export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm = 50, location = null) => {
-  const resolvedLoc = resolvePricingLocation(location, lat, lng);
+export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm = 150, location = null) => {
+  // Validate coordinates before hitting the DB (prevents silent wrong-distance calculations)
+  if (lat == null || lng == null || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
+    throw new Error('Valid lat and lng are required for recycler matching');
+  }
+  const numLat = Number(lat);
+  const numLng = Number(lng);
+  if (Math.abs(numLat) > 90)  throw new Error(`Invalid latitude ${numLat} — must be in [-90, 90]`);
+  if (Math.abs(numLng) > 180) throw new Error(`Invalid longitude ${numLng} — must be in [-180, 180]`);
+
+  const resolvedLoc = resolvePricingLocation(location, numLat, numLng);
   let targetCat = category;
   if (category) {
     const c = String(category).trim().toUpperCase();
@@ -37,6 +46,7 @@ export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm
   }
 
   const executeMatch = async (radius) => {
+    // $1 = lat, $2 = lng, $3 = category, $4 = maxDistanceKm, $5 = resolvedLoc (hub name), $6 = resolvedLoc (fallback — same value, avoids hardcoded 'Bengaluru')
     const matchQuery = `
       WITH RecyclerDistances AS (
         SELECT 
@@ -59,7 +69,8 @@ export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm
               ))
             )
           ) AS distance_km,
-          COALESCE(p.quoted_price, p.buying_price, m.quoted_price, m.buying_price, 0) AS offered_rate
+          -- NULL (not 0) when no price exists — prevents score distortion in ranking
+          COALESCE(p.quoted_price, p.buying_price, m.quoted_price, m.buying_price) AS offered_rate
         FROM recyclers r
         LEFT JOIN LATERAL (
           SELECT quoted_price, buying_price 
@@ -77,7 +88,8 @@ export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm
             OR ($3 = 'Battery' AND material_category IN ('Batteries', 'Battery'))
             OR ($3 = 'CRT' AND material_category IN ('CRTs', 'CRT'))
           )
-          AND (location = $5 OR location = 'Bengaluru')
+          -- Use resolvedLoc with fallback to resolvedLoc itself (no city-specific hardcoding)
+          AND (location = $5 OR location = $6)
           ORDER BY (location = $5) DESC, price_date DESC, id DESC
           LIMIT 1
         ) p ON true
@@ -97,7 +109,7 @@ export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm
             OR ($3 = 'Battery' AND material_category IN ('Batteries', 'Battery'))
             OR ($3 = 'CRT' AND material_category IN ('CRTs', 'CRT'))
           )
-          AND (location = $5 OR location = 'Bengaluru')
+          AND (location = $5 OR location = $6)
           ORDER BY (location = $5) DESC, price_date DESC, id DESC
           LIMIT 1
         ) m ON true
@@ -196,7 +208,7 @@ export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm
           26 * COALESCE(distance_score, 0.5) +
           22 * COALESCE(reliability, 0.6) +
           12 * COALESCE(pickup_score, 0.5) +
-          8  * COALESCE(material_score, 1)
+          8  * COALESCE(material_score, 0.5)
         ))) AS suitability,
         ROUND((
           (100 - LEAST(100, GREATEST(0, ROUND(
@@ -204,16 +216,119 @@ export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm
             26 * COALESCE(distance_score, 0.5) +
             22 * COALESCE(reliability, 0.6) +
             12 * COALESCE(pickup_score, 0.5) +
-            8  * COALESCE(material_score, 1)
+            8  * COALESCE(material_score, 0.5)
           ))))::numeric / 100
         ), 4) AS match_score
       FROM Scored
       ORDER BY suitability DESC;
     `;
-    const res = await query(matchQuery, [lat, lng, targetCat, radius, resolvedLoc]);
+    const res = await query(matchQuery, [numLat, numLng, targetCat, radius, resolvedLoc, resolvedLoc]);
     return res.rows;
   };
 
-  const rows = await executeMatch(maxDistanceKm);
+  let rows = await executeMatch(maxDistanceKm);
+  if (rows.length === 0 && maxDistanceKm < 500) {
+    rows = await executeMatch(500); // Fallback to a wider radius if no one is found locally
+  }
   return rows;
+};
+
+/**
+ * Find nearby authorized recyclers strictly by proximity (GPS distance).
+ * Does NOT query or include prices, valuation, or quotation data.
+ * Purely returns facility info, authorized materials, contacts, and distance.
+ *
+ * @param {Object} opts
+ * @param {number} opts.lat - Collector latitude
+ * @param {number} opts.lng - Collector longitude
+ * @param {number} [opts.radiusKm=100] - Search radius in km
+ * @param {number} [opts.limit=50] - Result limit
+ * @param {string} [opts.material] - Optional material filter (e.g. 'PCB')
+ * @param {string} [opts.search] - Optional name/location search
+ * @returns {Promise<Array>}
+ */
+export const getNearbyAuthorizedRecyclers = async ({
+  lat,
+  lng,
+  radiusKm = 100,
+  limit = 50,
+  material = null,
+  search = null,
+}) => {
+  if (lat == null || lng == null || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
+    throw new Error('Valid lat and lng are required for nearby recycler search');
+  }
+
+  const numLat = Number(lat);
+  const numLng = Number(lng);
+  const radius = Math.min(Math.max(Number(radiusKm) || 100, 5), 3000);
+  const maxResults = Math.min(Math.max(Number(limit) || 50, 1), 200);
+
+  const conditions = [
+    `r.authorization_status = 'authorized'`,
+    `r.latitude IS NOT NULL`,
+    `r.longitude IS NOT NULL`,
+  ];
+  const params = [numLat, numLng, radius, maxResults];
+  let paramIdx = 5;
+
+  if (material && material !== 'all') {
+    let aliases = [material];
+    if (material === 'Plastic') aliases = ['Plastic', 'Mixed Plastic', 'Plastics', 'Mixed Plastics'];
+    else if (material === 'Motor') aliases = ['Motor', 'Motor/Magnet Assembly', 'Motors'];
+    else if (material === 'LCD') aliases = ['LCD', 'LCD Panel', 'LCD Panels'];
+    else if (material === 'PCB') aliases = ['PCB', 'PCBs'];
+    else if (material === 'Cable') aliases = ['Cable', 'Cables'];
+    else if (material === 'Battery') aliases = ['Battery', 'Batteries'];
+    else if (material === 'CRT') aliases = ['CRT', 'CRTs'];
+
+    conditions.push(`r.materials_accepted ?| $${paramIdx++}`);
+    params.push(aliases);
+  }
+
+  if (search && search.trim()) {
+    conditions.push(`(r.name ILIKE $${paramIdx} OR r.facility_location ILIKE $${paramIdx} OR r.service_area ILIKE $${paramIdx})`);
+    params.push(`%${search.trim()}%`);
+    paramIdx++;
+  }
+
+  const querySql = `
+    SELECT 
+      r.id,
+      r.name,
+      r.facility_location,
+      r.latitude,
+      r.longitude,
+      r.materials_accepted,
+      r.authorization_status,
+      r.authorization_details,
+      r.contact_details,
+      r.pickup_availability,
+      r.service_area,
+      ROUND(
+        (6371 * acos(
+          LEAST(1.0, GREATEST(-1.0,
+            cos(radians($1)) * cos(radians(r.latitude)) * 
+            cos(radians(r.longitude) - radians($2)) + 
+            sin(radians($1)) * sin(radians(r.latitude))
+          ))
+        ))::numeric, 2
+      ) AS distance_km
+    FROM recyclers r
+    WHERE ${conditions.join(' AND ')}
+      AND (
+        6371 * acos(
+          LEAST(1.0, GREATEST(-1.0,
+            cos(radians($1)) * cos(radians(r.latitude)) * 
+            cos(radians(r.longitude) - radians($2)) + 
+            sin(radians($1)) * sin(radians(r.latitude))
+          ))
+        )
+      ) <= $3
+    ORDER BY distance_km ASC
+    LIMIT $4;
+  `;
+
+  const result = await query(querySql, params);
+  return result.rows;
 };

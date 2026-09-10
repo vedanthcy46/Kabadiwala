@@ -22,6 +22,7 @@ import {
   adminLogin, getAdminSummary, getAllRecyclers,
   adminVerifyRecycler, getPriceSources, getAdminLots, getAdminAuditEvents,
   getAiDatasetSummary, getAiDatasetSamples, getAnomalies, getAiDatasetExportUrl, updateAiFeedback,
+  getAiModel, retrainAiModel,
   getAdminAnalytics, getAdminHeatmap, createPriceSource, updatePriceSource, deletePriceSource,
 } from '../api/client';
 import AdminHeatmap from '../admin/AdminHeatmap';
@@ -183,6 +184,8 @@ export default function Admin() {
   const [correctingCat, setCorrectingCat] = useState('');
   const [correctionReasonInput, setCorrectionReasonInput] = useState('');
   const [aiActionBusy, setAiActionBusy] = useState(null);
+  const [aiModel, setAiModel] = useState(null);
+  const [retrainingBusy, setRetrainingBusy] = useState(false);
 
   useEffect(() => { setAuthed(getSession()?.role === 'admin'); }, []);
 
@@ -210,7 +213,7 @@ export default function Admin() {
     setLoading(true);
     setError('');
     try {
-      const [sumRes, recRes, priceRes, lotsRes, auditRes, aiSumRes, aiSampRes, anomalyRes, analyticsRes, heatRes] = await Promise.all([
+      const [sumRes, recRes, priceRes, lotsRes, auditRes, aiSumRes, aiSampRes, anomalyRes, analyticsRes, heatRes, aiModelRes] = await Promise.all([
         getAdminSummary(),
         getAllRecyclers({ limit: 1000 }),
         getPriceSources(),
@@ -221,6 +224,7 @@ export default function Admin() {
         getAnomalies().catch(() => ({ anomalies: [] })),
         getAdminAnalytics().catch(() => ({ data: null })),
         getAdminHeatmap().catch(() => ({ data: null })),
+        getAiModel().catch(() => ({ data: null })),
       ]);
       setSummary(sumRes.data);
       setRecyclers(Array.isArray(recRes.data) ? recRes.data : []);
@@ -232,6 +236,7 @@ export default function Admin() {
       setAnomalies(Array.isArray(anomalyRes.anomalies) ? anomalyRes.anomalies : (Array.isArray(anomalyRes.data?.anomalies) ? anomalyRes.data.anomalies : []));
       setAnalytics(analyticsRes.data ?? null);
       setHeatmapData(heatRes.data ?? null);
+      setAiModel(aiModelRes?.data ?? null);
     } catch {
       setError(t('admin.loadError'));
     } finally {
@@ -258,16 +263,34 @@ export default function Admin() {
       setCorrectionSample(null);
       setInspectSample(null);
       setCorrectionReasonInput('');
-      const [aiSumRes, aiSampRes] = await Promise.all([
+      const [aiSumRes, aiSampRes, aiModRes] = await Promise.all([
         getAiDatasetSummary(),
         getAiDatasetSamples({ limit: 100 }),
+        getAiModel().catch(() => ({ data: null })),
       ]);
       setAiSummary(aiSumRes.data);
       setAiSamples(Array.isArray(aiSampRes.data?.samples) ? aiSampRes.data.samples : []);
+      if (aiModRes?.data) setAiModel(aiModRes.data);
     } catch (err) {
       setError(err.message || 'Failed to update sample status');
     } finally {
       setAiActionBusy(null);
+    }
+  }
+
+  async function handleRetrainAiModel() {
+    setRetrainingBusy(true);
+    setError('');
+    try {
+      const res = await retrainAiModel();
+      setAiModel(res.data);
+      flash(res.message || 'Continuous AI model retrained successfully!');
+      const aiSumRes = await getAiDatasetSummary();
+      setAiSummary(aiSumRes.data);
+    } catch (err) {
+      setError(err.message || 'Failed to retrain model');
+    } finally {
+      setRetrainingBusy(false);
     }
   }
 
@@ -1147,6 +1170,55 @@ export default function Admin() {
                 {aiSummary?.totals?.accuracy_pct != null ? `${aiSummary.totals.accuracy_pct}%` : '—'}
               </span>
             </div>
+          </div>
+
+          {/* Continuous-Learning Live Model Card */}
+          <div className="card" style={{ marginTop: 'var(--space-4)', padding: 'var(--space-4)', background: 'linear-gradient(135deg, rgba(37,99,235,0.05), rgba(124,58,237,0.06))', border: '1px solid rgba(37,99,235,0.25)', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '1.2rem' }}>⚡</span>
+                  <strong style={{ fontSize: '1.05rem', color: 'var(--color-text)' }}>
+                    Continuous-Learning Model: <span style={{ color: 'var(--color-primary)' }}>{aiModel?.version || 'v1.6'}</span>
+                  </strong>
+                  <span className="p2-ai-pill p2-ai-pill--high" style={{ fontSize: '0.75rem', padding: '2px 8px' }}>
+                    Live Accuracy: {aiModel?.accuracy_pct ?? aiSummary?.totals?.accuracy_pct ?? 75}%
+                  </span>
+                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+                    ({aiModel?.totalSamples ?? aiSummary?.totals?.validated ?? 0} validated samples)
+                  </span>
+                </div>
+                <p className="text-muted" style={{ margin: '4px 0 0 0', fontSize: '0.85rem' }}>
+                  Empirical centroids and Laplace-smoothed priors retrain in real-time as collectors and admins validate materials.
+                  Last trained: {aiModel?.trainedAt ? new Date(aiModel.trainedAt).toLocaleTimeString() : 'Active'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleRetrainAiModel}
+                disabled={retrainingBusy}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 14px', fontSize: '0.85rem' }}
+                title="Force full retraining of centroids and accuracy priors across all feedback rows"
+              >
+                {retrainingBusy ? <LoadingSpinner size="sm" /> : '⚡ Retrain Model Now'}
+              </button>
+            </div>
+            {aiModel?.accuracyPriors && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: 'var(--space-3)', paddingTop: 'var(--space-3)', borderTop: '1px solid rgba(0,0,0,0.08)' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-muted)', alignSelf: 'center' }}>
+                  Learned Category Accuracy Priors:
+                </span>
+                {Object.entries(aiModel.accuracyPriors).map(([cat, prior]) => (
+                  <span key={cat} style={{ fontSize: '0.75rem', background: 'var(--color-bg, #fff)', border: '1px solid var(--color-border)', borderRadius: '4px', padding: '2px 8px', display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
+                    <span>{cat}:</span>
+                    <strong style={{ color: prior >= 0.75 ? '#15803d' : prior >= 0.5 ? '#b45309' : '#dc2626' }}>
+                      {Math.round(prior * 100)}%
+                    </strong>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Filter Bar */}
