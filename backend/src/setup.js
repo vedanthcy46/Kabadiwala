@@ -44,12 +44,8 @@ const MIGRATIONS = [
 
 // ── 2. SQL seed files — static reference data, run in dependency order ────────
 const SEEDS = [
-  { file: '02_seed_recyclers_prices.sql',
-    label: 'Demo recyclers + initial Bengaluru price history (researched Jun–Aug 2026)' },
-  { file: '03_seed_transactions.sql',
-    label: 'Demo collectors, lots, transactions, traceability & AI feedback samples' },
-  { file: '05_seed_recycler_rates.sql',
-    label: 'Recycler-specific offered rates (per recycler, per category)' },
+  { file: '02_init_base_users.sql',
+    label: 'Base collector and recycler accounts + default price sources' },
 ];
 
 // ── 3. Programmatic seed steps — run after SQL seeds ─────────────────────────
@@ -61,12 +57,12 @@ const SEEDS = [
 
 // ── Expected minimum row counts after full setup ──────────────────────────────
 const EXPECTED = {
-  recyclers:         579,   // 10 demo + 569 national XLSX entries
-  prices:            500,   // baseline after real XLSX prices seeded (was 426)
-  collectors:          2,
-  materials:           6,
-  transactions:        6,
-  traceability:        4,
+  recyclers:         570,   // 1 base + 569 national XLSX entries
+  prices:            500,   // baseline after real XLSX prices seeded
+  collectors:          1,
+  materials:           0,
+  transactions:        0,
+  traceability:        0,
   price_sources:       4,
   price_observations:  0,   // created empty; grows as recyclers quote lots
 };
