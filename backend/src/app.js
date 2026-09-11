@@ -27,7 +27,7 @@ app.use(express.urlencoded({ extended: true }));
 //   2. Hardcoded Netlify production URL — always allowed even if env var is missing
 //   3. localhost variants — allowed in development
 const ALWAYS_ALLOWED = [
-  'https://kabadiwalaconnect.netlify.app',
+  'https://e-sethu.netlify.app',
 ];
 
 const envOrigins = process.env.CORS_ORIGIN
