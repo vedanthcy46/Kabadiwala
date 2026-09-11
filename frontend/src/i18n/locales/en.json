@@ -10,7 +10,7 @@
     "bn": "বাংলা"
   },
   "nav": {
-    "home": "Kabadiwala Connect",
+    "home": "E-Setu",
     "dashboard": "Dashboard",
     "createLot": "Create Lot",
     "prices": "Prices",
@@ -25,10 +25,10 @@
     "switchPortal": "Switch portal",
     "mainNav": "Main navigation",
     "mobileNav": "Mobile navigation",
-    "homeLabel": "Kabadiwala Connect Home"
+    "homeLabel": "E-Setu Home"
   },
   "login": {
-    "title": "Welcome to Kabadiwala Connect",
+    "title": "Welcome to E-Setu",
     "subtitle": "Sign in to manage scrap collection, lots, and earnings",
     "kabadiwala": "Kabadiwala (Collector)",
     "phoneLabel": "Mobile number",
@@ -47,7 +47,7 @@
     "recyclerHint2": "Only admin-verified recyclers are allowed to sign in.",
     "loginFailed": "Could not sign in. Check your mobile number and try again.",
     "browseWithoutLogin": "Browse without signing in",
-    "noAccount": "New to Kabadiwala Connect?",
+    "noAccount": "New to E-Setu?",
     "createAccount": "Create an account",
     "loggedInAs": "Signed in as",
     "logout": "Sign out",
@@ -607,7 +607,7 @@
   },
   "register": {
     "title": "Create Kabadiwala Account",
-    "subtitle": "Join Kabadiwala Connect to create lots and earn from verified recyclers",
+    "subtitle": "Join E-Setu to create lots and earn from verified recyclers",
     "name": "Full Name",
     "namePlaceholder": "e.g. Ramesh Kumar",
     "location": "Operating Location",
@@ -1010,7 +1010,7 @@
     "payment": "Payment Recorded"
   },
   "landing": {
-    "tagline": "Connect collectors with authorized recyclers. Track your scrap. Get fair prices.",
+    "tagline": "E-Setu – Connecting Collectors to Responsible Recycling",
     "getStarted": "Get Started",
     "learnMore": "Learn More",
     "featuresTitle": "How It Works",
@@ -1033,7 +1033,7 @@
     "loginAsRecycler": "Login as Recycler",
     "loginAsAdmin": "Login as Admin",
     "ctaTitle": "Ready to Start?",
-    "ctaDesc": "Join thousands of collectors and recyclers in the Kabadiwala Connect network",
+    "ctaDesc": "Join thousands of collectors and recyclers in the E-Setu network",
     "footer": "All rights reserved."
   },
   "collectorLogin": {
@@ -1044,7 +1044,7 @@
     "signIn": "Sign in",
     "signingIn": "Signing in…",
     "phoneHint": "Use a 10-digit Indian mobile number",
-    "noAccount": "New to Kabadiwala Connect?",
+    "noAccount": "New to E-Setu?",
     "createAccount": "Create an account"
   },
   "recyclerLogin": {

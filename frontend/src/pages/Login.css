@@ -19,17 +19,21 @@
 }
 
 .login-card__logo {
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   margin: 0 auto var(--space-3);
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+  background: var(--color-surface, #ffffff);
+  border: 1.5px solid var(--color-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-weight: var(--weight-bold);
-  font-size: var(--text-2xl);
+  overflow: hidden;
+  background-image: url('/logo.png');
+  background-size: 80%;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 .login-panel {

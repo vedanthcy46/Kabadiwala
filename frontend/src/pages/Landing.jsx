@@ -33,8 +33,8 @@ export default function Landing() {
         <div className="container hero__content">
           <div className="hero__text">
             <h1 className="hero__title animate-fade-in">
-              <span className="hero__title-main">Kabadiwala</span>
-              <span className="hero__title-sub">Connect</span>
+              <span className="hero__title-main">E-Setu</span>
+              <span className="hero__title-sub">Connecting Collectors to Responsible Recycling</span>
             </h1>
             <p className="hero__tagline animate-fade-in" style={{ animationDelay: '100ms' }}>
               {t('landing.tagline')}
@@ -53,6 +53,9 @@ export default function Landing() {
               <div className="hero__circle hero__circle--1"></div>
               <div className="hero__circle hero__circle--2"></div>
               <div className="hero__circle hero__circle--3"></div>
+              <div className="hero__logo-wrapper">
+                <img src="/logo.png" alt="E-Setu Logo" className="hero__logo-img" />
+              </div>
               <div className="hero__icon hero__icon--recycler">♻️</div>
               <div className="hero__icon hero__icon--kabadiwala">📦</div>
               <div className="hero__icon hero__icon--rupee">₹</div>
@@ -135,7 +138,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="landing-footer">
         <div className="container">
-          <p>&copy; 2026 Kabadiwala Connect. {t('landing.footer')}</p>
+          <p>&copy; 2026 E-Setu. {t('landing.footer')}</p>
         </div>
       </footer>
     </div>

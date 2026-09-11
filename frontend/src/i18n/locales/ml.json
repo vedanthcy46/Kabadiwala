@@ -10,7 +10,7 @@
     "bn": "বাংলা"
   },
   "nav": {
-    "home": "കബാഡിവാല കണക്ട്",
+    "home": "E-Setu",
     "createLot": "ലോട്ട് സൃഷ്ടിക്കുക",
     "lots": "ലോട്ട്",
     "collector": "ശേഖരണക്കാരൻ",
@@ -25,7 +25,7 @@
     "switchPortal": "പോർട്ടൽ മാറ്റുക",
     "mainNav": "പ്രധാന നാവിഗേഷൻ",
     "mobileNav": "മൊബൈൽ നാവിഗേഷൻ",
-    "homeLabel": "കബഡിവാല കണക്ട് ഹോം"
+    "homeLabel": "E-Setu Home"
   },
   "dashboard": {
     "createLot": "ലോട്ട് സൃഷ്ടിക്കുക",
@@ -388,7 +388,7 @@
     "feature1Title": "ലോട്ട് സൃഷ്ടിക്കുക",
     "recycler": "റീസൈക്ലർ",
     "admin": "അഡ്മിൻ",
-    "tagline": "അംഗീകൃത റീസൈക്ലർമാരുമായി കളക്ടർമാരെ ബന്ധിപ്പിക്കുക. നിങ്ങളുടെ ജങ്ക് ട്രാക്ക് ചെയ്യുക. മികച്ച വിലകൾ നേടുക.",
+    "tagline": "E-Setu – Connecting Collectors to Responsible Recycling",
     "getStarted": "വീണ്ടും ആരംഭിക്കുക",
     "learnMore": "കൂടുതലറിയുക",
     "featuresTitle": "ഇത് എങ്ങനെ പ്രവർത്തിക്കുന്നു?",
@@ -417,7 +417,7 @@
     "loginAsRecycler": "റീസൈക്ലറായി ലോഗിൻ ചെയ്യുക",
     "loginAsCollector": "ഒരു ആർക്കൈവറായി ലോഗിൻ ചെയ്യുക",
     "title": "സൈൻ ഇൻ ചെയ്യുക",
-    "subtitle": "കബഡിവാല കണക്ട് പോർട്ടൽ ആക്സസ് ചെയ്യുക",
+    "subtitle": "E-Setu പോർട്ടൽ ആക്സസ് ചെയ്യുക",
     "kabadiwala": "സ്ക്രാപ്പ് ഡീലർ (കളക്ടർ)",
     "phoneLabel": "മൊബൈൽ നമ്പർ",
     "phonePlaceholder": "10 അക്ക മൊബൈൽ നമ്പർ നൽകുക",

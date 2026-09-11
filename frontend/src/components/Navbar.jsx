@@ -71,9 +71,10 @@ export function Navbar() {
     <header className="navbar" role="banner">
       <div className="navbar__inner container">
         <Link to={homePath} className="navbar__logo" aria-label={t('nav.homeLabel')} onClick={() => setDrawerOpen(false)}>
+          <img src="/logo.png" alt="E-Setu Logo" className="navbar__logo-img" />
           <div className="navbar__logo-text">
-            <span className="navbar__logo-name">Kabadiwala</span>
-            <span className="navbar__logo-sub">Connect</span>
+            <span className="navbar__logo-name">E-Setu</span>
+            <span className="navbar__logo-sub">Connecting Collectors to Responsible Recycling</span>
           </div>
         </Link>
 
