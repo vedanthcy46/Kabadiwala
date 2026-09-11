@@ -123,27 +123,27 @@ function rankFeatures(features) {
   const topFit = sorted[0][1];
   const secondFit = sorted[1] ? sorted[1][1] : 0;
   const spread = Math.max(0, topFit - secondFit);
-
   const prior = model?.accuracyPriors?.[topCategory] ?? 0.82;
-  const base = topFit * prior;
-
-  // Calibrated dynamic confidence (varies with margin, feature strength, and model accuracy):
-  let topConfidence;
-  if (topFit >= 0.75 && spread >= 0.15) {
-    topConfidence = Math.min(0.94, Math.round((base + spread * 0.22) * 1000) / 1000);
-  } else if (topFit >= 0.55 && spread >= 0.08) {
-    topConfidence = Math.min(0.78, Math.max(0.55, Math.round((base + spread * 0.15) * 1000) / 1000));
-  } else {
-    topConfidence = Math.max(0.36, Math.min(0.52, Math.round((topFit * 0.72) * 1000) / 1000));
-  }
+  
+  // Truly continuous calibrated confidence:
+  // Combines:
+  // 1) base feature fit (how well features match this category)
+  // 2) learned empirical prior (how accurate the model has been on this category)
+  // 3) margin of victory (spread over the runner-up category)
+  // 4) signal strength penalty if spread is negligible (ambiguity)
+  const spreadBonus = spread > 0 ? Math.tanh(spread * 3.0) * 0.16 : 0;
+  const rawConf = (topFit * 0.70 + prior * 0.30) + spreadBonus;
+  
+  // Normalization between 0.35 (very ambiguous/noisy) and 0.96 (crystal clear)
+  const topConfidence = Math.min(0.96, Math.max(0.35, Math.round(rawConf * 1000) / 1000));
 
   const ranked = sorted.map(([category, fit], idx) => {
     let conf;
     if (idx === 0) {
       conf = topConfidence;
     } else {
-      const relDiff = (topFit - fit) * 0.35;
-      conf = Math.max(0.12, Math.round((topConfidence - relDiff) * 1000) / 1000);
+      const relDiff = (topFit - fit) * 0.50;
+      conf = Math.max(0.08, Math.round((topConfidence - relDiff) * 1000) / 1000);
     }
     return { category, confidence: conf };
   });

@@ -233,7 +233,8 @@ export const trainModelFromFeedback = async () => {
   const [samplesRes, statsRes] = await Promise.all([
     query(`
       SELECT 
-        COALESCE(human_category, ai_predicted_category) AS category,
+        COALESCE(human_category, ai_predicted_category) AS true_category,
+        ai_predicted_category,
         ai_features,
         outcome
       FROM ai_feedback
@@ -251,36 +252,39 @@ export const trainModelFromFeedback = async () => {
   ]);
 
   const categories = ['CRT', 'LCD', 'PCB', 'Cable', 'Battery', 'Motor', 'Plastic'];
-  const categoryData = {};
+  // Track feature sums by true category (for centroids)
+  const centroidData = {};
+  // Track prediction success by predicted category (for accuracy priors)
+  const predictionStats = {};
+
   for (const c of categories) {
-    categoryData[c] = {
-      sampleCount: 0,
-      acceptedCount: 0,
-      correctedCount: 0,
-      featureSums: {},
-    };
+    centroidData[c] = { sampleCount: 0, featureSums: {} };
+    predictionStats[c] = { accepted: 0, corrected: 0 };
   }
 
   for (const row of samplesRes.rows) {
-    const cat = row.category;
-    if (!categoryData[cat]) {
-      categoryData[cat] = { sampleCount: 0, acceptedCount: 0, correctedCount: 0, featureSums: {} };
-    }
-    const cd = categoryData[cat];
-    cd.sampleCount++;
-    if (row.outcome === 'accepted') cd.acceptedCount++;
-    if (row.outcome === 'corrected') cd.correctedCount++;
+    const trueCat = row.true_category;
+    const predCat = row.ai_predicted_category;
 
-    let f = row.ai_features;
-    if (typeof f === 'string') {
-      try { f = JSON.parse(f); } catch { f = null; }
-    }
-    if (f && typeof f === 'object') {
-      for (const [k, v] of Object.entries(f)) {
-        if (typeof v === 'number' && Number.isFinite(v)) {
-          cd.featureSums[k] = (cd.featureSums[k] || 0) + v;
+    if (trueCat && centroidData[trueCat]) {
+      const cd = centroidData[trueCat];
+      cd.sampleCount++;
+      let f = row.ai_features;
+      if (typeof f === 'string') {
+        try { f = JSON.parse(f); } catch { f = null; }
+      }
+      if (f && typeof f === 'object') {
+        for (const [k, v] of Object.entries(f)) {
+          if (typeof v === 'number' && Number.isFinite(v)) {
+            cd.featureSums[k] = (cd.featureSums[k] || 0) + v;
+          }
         }
       }
+    }
+
+    if (predCat && predictionStats[predCat]) {
+      if (row.outcome === 'accepted') predictionStats[predCat].accepted++;
+      if (row.outcome === 'corrected') predictionStats[predCat].corrected++;
     }
   }
 
@@ -288,19 +292,25 @@ export const trainModelFromFeedback = async () => {
   const accuracyPriors = {};
 
   for (const cat of categories) {
-    const cd = categoryData[cat];
-    if (cd.sampleCount > 0) {
+    const cd = centroidData[cat];
+    if (cd && cd.sampleCount > 0) {
       centroids[cat] = {};
       for (const [k, sum] of Object.entries(cd.featureSums)) {
         centroids[cat][k] = Math.round((sum / cd.sampleCount) * 10000) / 10000;
       }
-      // Laplace-smoothed empirical accuracy
-      accuracyPriors[cat] = Math.round(
-        ((cd.acceptedCount + 1) / (cd.acceptedCount + cd.correctedCount + 2)) * 1000
-      ) / 1000;
     } else {
       centroids[cat] = null;
-      accuracyPriors[cat] = 0.75;
+    }
+
+    const ps = predictionStats[cat];
+    const totalPredictions = (ps?.accepted || 0) + (ps?.corrected || 0);
+    if (totalPredictions > 0) {
+      // Laplace-smoothed empirical accuracy: (accepted + 1) / (total + 2)
+      accuracyPriors[cat] = Math.round(
+        ((ps.accepted + 1) / (totalPredictions + 2)) * 1000
+      ) / 1000;
+    } else {
+      accuracyPriors[cat] = 0.80;
     }
   }
 
@@ -321,7 +331,7 @@ export const trainModelFromFeedback = async () => {
       categories.map((c) => [
         c,
         {
-          samples: categoryData[c].sampleCount,
+          samples: centroidData[c]?.sampleCount || 0,
           accuracy: accuracyPriors[c],
         },
       ])
