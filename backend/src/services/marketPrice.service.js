@@ -90,7 +90,7 @@ export const seedDynamicNationalPrices = async (days = 90) => {
 
     // Get list of authorized recyclers to bind rates to
     const recyclersRes = await client.query(
-      `SELECT id, name, facility_location, materials_accepted FROM recyclers WHERE authorization_status = 'authorized'`
+      `SELECT id, name, facility_location, materials_accepted FROM recyclers WHERE authorization_status IN ('authorized', 'valid', 'expiring_soon')`
     );
     const recyclers = recyclersRes.rows;
 

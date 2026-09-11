@@ -56,6 +56,7 @@ export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm
           r.latitude,
           r.longitude,
           r.materials_accepted,
+          r.authorization_status,
           r.authorization_details,
           r.contact_details,
           r.pickup_availability,
@@ -114,7 +115,7 @@ export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm
           LIMIT 1
         ) m ON true
         WHERE COALESCE(r.account_status, 'ACTIVE') = 'ACTIVE'
-          AND r.authorization_status IN ('authorized', 'valid')
+          AND r.authorization_status IN ('authorized', 'valid', 'expiring_soon')
           AND (r.authorization_valid_until IS NULL OR r.authorization_valid_until >= CURRENT_DATE)
           AND (
             r.materials_accepted ? $3
@@ -187,6 +188,7 @@ export const matchAuthorizedRecyclers = async (category, lat, lng, maxDistanceKm
         latitude,
         longitude,
         materials_accepted,
+        authorization_status,
         authorization_details,
         contact_details,
         pickup_availability,
@@ -265,7 +267,9 @@ export const getNearbyAuthorizedRecyclers = async ({
   const maxResults = Math.min(Math.max(Number(limit) || 50, 1), 200);
 
   const conditions = [
-    `r.authorization_status = 'authorized'`,
+    `r.authorization_status IN ('authorized', 'valid', 'expiring_soon')`,
+    `(r.authorization_valid_until IS NULL OR r.authorization_valid_until >= CURRENT_DATE)`,
+    `COALESCE(r.account_status, 'ACTIVE') = 'ACTIVE'`,
     `r.latitude IS NOT NULL`,
     `r.longitude IS NOT NULL`,
   ];

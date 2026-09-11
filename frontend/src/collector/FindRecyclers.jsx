@@ -364,7 +364,7 @@ export default function FindRecyclers() {
                   <div className="find-recycler-card__titles">
                     <h3 className="find-recycler-card__name">{r.name}</h3>
                     <div className="find-recycler-card__badges">
-                      <StatusBadge status="authorized" size="sm" />
+                      <StatusBadge status={r.authorization_status || 'authorized'} size="sm" />
                       {r.distance_km != null && (
                         <span className="find-recycler-card__dist-badge">
                           🚗 {Number(r.distance_km).toFixed(1)} km away

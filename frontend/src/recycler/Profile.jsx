@@ -18,6 +18,8 @@ export default function RecyclerProfile() {
   const [editing, setEditing] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [avatarFile, setAvatarFile] = useState(null);
+  const [detectingGps, setDetectingGps] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState('');
 
   // Authorization Renewal State
   const [showRenewModal, setShowRenewModal] = useState(false);
@@ -88,6 +90,42 @@ export default function RecyclerProfile() {
     handleField('materials_accepted', next);
   }
 
+  function handleDetectFacilityGps() {
+    if (!navigator.geolocation) {
+      setGpsStatus('Geolocation is not supported by your browser.');
+      return;
+    }
+    setDetectingGps(true);
+    setGpsStatus('Acquiring high-accuracy facility GPS coordinates…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude.toFixed(6));
+        const lng = Number(pos.coords.longitude.toFixed(6));
+        const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : null;
+        setForm(prev => ({
+          ...prev,
+          latitude: lat,
+          longitude: lng,
+          location_accuracy: acc,
+          location_source: 'GPS',
+        }));
+        let accMsg = '';
+        if (acc != null) {
+          if (acc <= 20) accMsg = ` · Good accuracy (±${acc}m)`;
+          else if (acc <= 50) accMsg = ` · Acceptable accuracy (±${acc}m)`;
+          else accMsg = ` · ⚠️ Low accuracy (±${acc}m) — consider moving outdoors and retrying`;
+        }
+        setGpsStatus(`📍 Coordinates set: ${lat}, ${lng}${accMsg}`);
+        setDetectingGps(false);
+      },
+      (err) => {
+        setGpsStatus('⚠️ Could not access GPS. Please check browser location permissions and try again.');
+        setDetectingGps(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
   async function handleSave() {
     setSaving(true);
     setError('');
@@ -101,12 +139,29 @@ export default function RecyclerProfile() {
         }
       }
 
+      // Check coordinates validity if provided
+      const lat = (form.latitude !== '' && form.latitude != null) ? Number(form.latitude) : undefined;
+      const lng = (form.longitude !== '' && form.longitude != null) ? Number(form.longitude) : undefined;
+      if (lat !== undefined && (isNaN(lat) || lat < -90 || lat > 90)) {
+        throw new Error('Please enter a valid latitude between -90 and 90.');
+      }
+      if (lng !== undefined && (isNaN(lng) || lng < -180 || lng > 180)) {
+        throw new Error('Please enter a valid longitude between -180 and 180.');
+      }
+
+      const addr = (form.facility_address || form.facility_location || '').trim();
+
       const payload = {
-        name: form.name ? String(form.name) : undefined,
-        facility_location: form.facility_location ? String(form.facility_location) : undefined,
+        name: form.name ? String(form.name).trim() : undefined,
+        facility_address: addr || undefined,
+        facility_location: form.facility_location?.trim() || addr || undefined,
+        latitude: lat,
+        longitude: lng,
+        location_accuracy: (form.location_accuracy != null && form.location_accuracy !== '') ? Number(form.location_accuracy) : undefined,
+        location_source: lat !== undefined ? 'GPS' : undefined,
         materials_accepted: form.materials_accepted,
-        service_area: form.service_area ? String(form.service_area) : undefined,
-        contact_details: form.contact_details != null ? String(form.contact_details) : (form.contact != null ? String(form.contact) : ''),
+        service_area: form.service_area ? String(form.service_area).trim() : undefined,
+        contact_details: form.contact_details != null ? String(form.contact_details).trim() : (form.contact != null ? String(form.contact).trim() : ''),
         pickup_availability: form.pickup_availability,
         ...(profile_image ? { profile_image } : {}),
       };
@@ -117,10 +172,25 @@ export default function RecyclerProfile() {
         setAvatarPreview(r.data.profile_image);
       }
       setAvatarFile(null);
-      setSuccess(t('recyclerDash.profileUpdated'));
+      setSuccess(t('recyclerDash.profileUpdated') || 'Profile updated successfully!');
       setEditing(false);
+
+      // Keep cached session up to date
+      try {
+        const userStr = localStorage.getItem('currentUser');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          if (user.role === 'recycler') {
+            if (r.data.name) user.name = r.data.name;
+            if (r.data.facility_location || r.data.facility_address) {
+              user.facility_location = r.data.facility_location || r.data.facility_address;
+            }
+            localStorage.setItem('currentUser', JSON.stringify(user));
+          }
+        }
+      } catch (_) {}
     } catch (err) {
-      setError(err.message || t('recyclerDash.profileUpdateFail'));
+      setError(err.message || t('recyclerDash.profileUpdateFail') || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
@@ -134,6 +204,8 @@ export default function RecyclerProfile() {
       setAvatarPreview(null);
     }
     setAvatarFile(null);
+    setDetectingGps(false);
+    setGpsStatus('');
     setEditing(false);
     setError('');
   }
@@ -205,7 +277,7 @@ export default function RecyclerProfile() {
           <div>
             <h1 className="section-title">{recycler?.name || t('recyclerDash.myProfile')}</h1>
             <p className="section-subtitle" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '4px' }}>
-              <span>{recycler?.facility_location}</span> · 
+              <span>{recycler?.facility_address || recycler?.facility_location}</span> · 
               <StatusBadge status={recycler?.account_status || 'ACTIVE'} size="md" />
               <StatusBadge status={recycler?.authorization_status} size="md" />
             </p>
@@ -268,18 +340,147 @@ export default function RecyclerProfile() {
             </div>
 
             <div className="form-group">
-              <label className="form-label" htmlFor="p-location">{t('recyclerDash.facilityLocation')}</label>
+              <label className="form-label" htmlFor="p-address">Facility Physical Address (Postal / Documentation)</label>
               {editing ? (
-                <input
-                  id="p-location"
-                  className="form-input"
-                  value={form?.facility_location || ''}
-                  onChange={e => handleField('facility_location', e.target.value)}
-                />
+                <>
+                  <textarea
+                    id="p-address"
+                    className="form-input"
+                    rows={2}
+                    placeholder="e.g. Plot No. 25, 4th Cross, Peenya Industrial Area, Bengaluru, Karnataka - 560058"
+                    value={form?.facility_address ?? form?.facility_location ?? ''}
+                    onChange={e => {
+                      handleField('facility_address', e.target.value);
+                      handleField('facility_location', e.target.value);
+                    }}
+                  />
+                  <p className="form-hint" style={{ fontSize: '0.8rem', marginTop: '4px', color: 'var(--color-text-muted)' }}>
+                    Physical postal address used on invoices, consignment manifests, and official documentation.
+                  </p>
+                </>
               ) : (
-                <p className="profile-value">{recycler?.facility_location || '—'}</p>
+                <p className="profile-value">{recycler?.facility_address || recycler?.facility_location || '—'}</p>
               )}
             </div>
+
+            {/* GPS Coordinates Section */}
+            {editing ? (
+              <div className="form-group" style={{ padding: '14px', borderRadius: '8px', background: form?.latitude ? 'rgba(22, 163, 74, 0.05)' : 'rgba(220, 38, 38, 0.05)', border: form?.latitude ? '1px solid rgba(22, 163, 74, 0.3)' : '1px dashed rgba(220, 38, 38, 0.35)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                  <div>
+                    <label className="form-label" style={{ margin: 0, fontWeight: 700, fontSize: '0.9rem' }}>
+                      📍 Facility GPS Coordinates * <span style={{ fontSize: '0.78rem', color: '#dc2626', fontWeight: 600 }}>(Mandatory for Matching)</span>
+                    </label>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                      Actual GPS location of your physical facility used to calculate collector pickup distances.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleDetectFacilityGps}
+                    disabled={detectingGps}
+                    style={{ fontSize: '0.82rem', padding: '5px 12px' }}
+                  >
+                    {detectingGps ? <><LoadingSpinner size="sm" /> Acquiring GPS…</> : '📍 Detect Current GPS Location'}
+                  </button>
+                </div>
+
+                {gpsStatus && (
+                  <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: gpsStatus.includes('⚠️') ? 'var(--color-destructive, #dc2626)' : 'var(--color-success, #16a34a)' }}>
+                    {gpsStatus}
+                  </p>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.78rem' }} htmlFor="p-lat">Latitude</label>
+                    <input
+                      id="p-lat"
+                      type="number"
+                      step="0.000001"
+                      className="form-input font-mono"
+                      placeholder="e.g. 12.971598"
+                      value={form?.latitude ?? ''}
+                      onChange={e => handleField('latitude', e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.78rem' }} htmlFor="p-lng">Longitude</label>
+                    <input
+                      id="p-lng"
+                      type="number"
+                      step="0.000001"
+                      className="form-input font-mono"
+                      placeholder="e.g. 77.594566"
+                      value={form?.longitude ?? ''}
+                      onChange={e => handleField('longitude', e.target.value === '' ? '' : Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+
+                {form?.location_accuracy != null && (
+                  <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Accuracy:</span>
+                    <span
+                      className={`status-badge ${form.location_accuracy <= 20 ? 'status-badge--success' : form.location_accuracy <= 50 ? 'status-badge--warning' : 'status-badge--error'}`}
+                      style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+                    >
+                      {form.location_accuracy <= 20 ? '🟢 High' : form.location_accuracy <= 50 ? '🟡 Acceptable' : '🔴 Low'}: ±{form.location_accuracy}m
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="form-group" style={{ padding: '14px', borderRadius: '8px', background: 'var(--color-surface-alt, #f8fafc)', border: '1px solid var(--color-border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                  <label className="form-label" style={{ margin: 0, fontWeight: 700, fontSize: '0.9rem' }}>
+                    📍 Facility GPS Coordinates (Matching Engine)
+                  </label>
+                  {recycler?.latitude != null && recycler?.longitude != null && (
+                    <a
+                      href={`https://www.google.com/maps?q=${recycler.latitude},${recycler.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: '0.78rem', padding: '2px 8px', textDecoration: 'underline' }}
+                    >
+                      🗺️ View on Map
+                    </a>
+                  )}
+                </div>
+
+                {recycler?.latitude != null && recycler?.longitude != null ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <span className="font-mono" style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--color-primary, #059669)' }}>
+                        {Number(recycler.latitude).toFixed(6)}, {Number(recycler.longitude).toFixed(6)}
+                      </span>
+                      {recycler.location_accuracy != null && (
+                        <span
+                          className={`status-badge ${recycler.location_accuracy <= 20 ? 'status-badge--success' : recycler.location_accuracy <= 50 ? 'status-badge--warning' : 'status-badge--error'}`}
+                          style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+                        >
+                          {recycler.location_accuracy <= 20 ? '🟢 High' : recycler.location_accuracy <= 50 ? '🟡 Acceptable' : '🔴 Low'}: ±{recycler.location_accuracy}m
+                        </span>
+                      )}
+                      <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                        Source: {recycler.location_source || 'GPS'}
+                      </span>
+                    </div>
+                    {recycler.location_updated_at && (
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                        🕒 Coordinates updated: {new Date(recycler.location_updated_at).toLocaleString('en-IN')}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ color: '#dc2626', fontSize: '0.85rem' }}>
+                    ⚠️ No GPS coordinates configured. Recyclers without GPS coordinates cannot be matched with nearby collectors. Click &quot;Edit Profile&quot; to set coordinates.
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label" htmlFor="p-service">{t('recyclerDash.serviceArea')}</label>

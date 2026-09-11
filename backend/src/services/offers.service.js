@@ -151,7 +151,7 @@ const ensureRecyclerCanService = async (recyclerId, category) => {
   }
   const recycler = recyclerResult.rows[0];
 
-  if (recycler.authorization_status !== 'authorized') {
+  if (!['authorized', 'valid', 'expiring_soon', 'renewal_pending'].includes(recycler.authorization_status) || recycler.account_status === 'SUSPENDED') {
     throw new ApiError(400, 'Only authorized recyclers can quote on lots');
   }
 

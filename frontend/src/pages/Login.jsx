@@ -30,7 +30,7 @@ export default function Login({ location }) {
 
   useEffect(() => {
     getAllRecyclers()
-      .then((r) => setRecyclers((Array.isArray(r.data) ? r.data : []).filter((x) => x.authorization_status === 'authorized')))
+      .then((r) => setRecyclers((Array.isArray(r.data) ? r.data : []).filter((x) => ['authorized', 'valid', 'expiring_soon'].includes(x.authorization_status) && x.account_status !== 'SUSPENDED')))
       .catch(() => { });
   }, []);
 

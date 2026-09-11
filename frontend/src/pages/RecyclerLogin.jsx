@@ -35,9 +35,11 @@ export default function RecyclerLogin() {
   // ── Apply state ──────────────────────────────────────────────────────────
   const [form, setForm] = useState({
     name: '',
+    facility_address: '',
     facility_location: '',
     latitude: null,
     longitude: null,
+    location_accuracy: null,
     contact_details: '',
     materials_accepted: [],
     pickup_availability: 'on_request',
@@ -57,34 +59,44 @@ export default function RecyclerLogin() {
 
   function handleAutoDetectGps() {
     if (!navigator.geolocation) {
-      setGpsStatus('Geolocation not supported by your browser');
+      setGpsStatus('Geolocation is not supported by your browser');
       return;
     }
     setDetectingGps(true);
-    setGpsStatus('Acquiring precise GPS coordinates…');
+    setGpsStatus('Acquiring precise facility GPS coordinates…');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const { latitude, longitude } = pos.coords;
+        const { latitude, longitude, accuracy } = pos.coords;
+        const lat = parseFloat(latitude.toFixed(6));
+        const lng = parseFloat(longitude.toFixed(6));
+        const acc = accuracy ? Math.round(accuracy) : null;
         setForm(f => ({
           ...f,
-          latitude: parseFloat(latitude.toFixed(6)),
-          longitude: parseFloat(longitude.toFixed(6)),
-          facility_location: f.facility_location || `GPS (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+          latitude: lat,
+          longitude: lng,
+          location_accuracy: acc,
+          facility_location: f.facility_location || f.facility_address || `GPS Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
         }));
-        setGpsStatus(`📍 Coordinates set: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+        let accMsg = '';
+        if (acc != null) {
+          if (acc <= 20) accMsg = ` · Good accuracy (±${acc}m)`;
+          else if (acc <= 50) accMsg = ` · Acceptable accuracy (±${acc}m)`;
+          else accMsg = ` · ⚠️ Low accuracy (±${acc}m) — consider moving outdoors and retrying`;
+        }
+        setGpsStatus(`📍 Coordinates set: ${lat.toFixed(6)}, ${lng.toFixed(6)}${accMsg}`);
         setDetectingGps(false);
       },
       (err) => {
-        setGpsStatus('Could not access GPS. Will auto-geocode address.');
+        setGpsStatus('⚠️ Could not access GPS. Please allow location access in your browser and try again.');
         setDetectingGps(false);
       },
-      { enableHighAccuracy: true, timeout: 8000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }
 
   useEffect(() => {
     getAllRecyclers()
-      .then((r) => setRecyclers((Array.isArray(r.data) ? r.data : []).filter((x) => x.authorization_status === 'authorized')))
+      .then((r) => setRecyclers((Array.isArray(r.data) ? r.data : []).filter((x) => ['authorized', 'valid', 'expiring_soon'].includes(x.authorization_status) && x.account_status !== 'SUSPENDED')))
       .catch(() => {});
   }, []);
 
@@ -99,8 +111,8 @@ export default function RecyclerLogin() {
     setPickerBusy(true);
     setPickerOpen(true);
     const timer = setTimeout(() => {
-      getAllRecyclers({ name: q, authorization_status: 'authorized', limit: 20 })
-        .then((r) => setPickerResults(Array.isArray(r.data) ? r.data : []))
+      getAllRecyclers({ name: q, limit: 20 })
+        .then((r) => setPickerResults((Array.isArray(r.data) ? r.data : []).filter((x) => ['authorized', 'valid', 'expiring_soon'].includes(x.authorization_status) && x.account_status !== 'SUSPENDED')))
         .catch(() => setPickerResults([]))
         .finally(() => setPickerBusy(false));
     }, 250);
@@ -150,12 +162,23 @@ export default function RecyclerLogin() {
 
   async function handleApply() {
     if (!form.name.trim()) { setApplyError('Please enter your facility name.'); return; }
-    if (!form.facility_location.trim()) { setApplyError('Please enter your facility location.'); return; }
+    const addr = (form.facility_address || form.facility_location || '').trim();
+    if (!addr) { setApplyError('Please enter your physical facility address.'); return; }
+    if (form.latitude == null || form.longitude == null) {
+      setApplyError('Facility GPS coordinates are mandatory for collector distance matching. Please click "Detect / Set Facility Location".');
+      return;
+    }
     if (form.materials_accepted.length === 0) { setApplyError('Select at least one material category.'); return; }
     setApplyError('');
     setApplyBusy(true);
     try {
-      const res = await onboardRecycler(form);
+      const payload = {
+        ...form,
+        facility_address: addr,
+        facility_location: form.facility_location?.trim() || addr,
+        location_source: 'GPS',
+      };
+      const res = await onboardRecycler(payload);
       setAppliedId(res.data?.id);
       setApplied(true);
     } catch (err) {
@@ -394,34 +417,77 @@ export default function RecyclerLogin() {
             </div>
 
             <div className="form-group">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-1)' }}>
-                <label className="form-label" htmlFor="apply-location" style={{ margin: 0 }}>Facility Location / Address *</label>
+              <label className="form-label" htmlFor="apply-address">Facility Physical Address *</label>
+              <textarea
+                id="apply-address"
+                className="form-input"
+                rows={2}
+                placeholder="e.g. Plot No. 25, 4th Cross, Peenya Industrial Area, Bengaluru, Karnataka - 560058"
+                value={form.facility_address || form.facility_location}
+                onChange={e => setForm(f => ({ ...f, facility_address: e.target.value, facility_location: e.target.value }))}
+              />
+              <p className="form-hint" style={{ fontSize: '0.8rem', marginTop: '4px' }}>
+                Physical postal address used on invoices, consignment manifests, and official documentation.
+              </p>
+            </div>
+
+            <div className="form-group" style={{ padding: '14px', borderRadius: '8px', background: form.latitude ? 'rgba(22, 163, 74, 0.05)' : 'rgba(124, 58, 237, 0.05)', border: form.latitude ? '1px solid rgba(22, 163, 74, 0.3)' : '1px dashed rgba(124, 58, 237, 0.35)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                <div>
+                  <label className="form-label" style={{ margin: 0, fontWeight: 700, fontSize: '0.92rem' }}>
+                    📍 Facility Location (GPS Coordinates) * <span style={{ fontSize: '0.78rem', color: '#dc2626', fontWeight: 600 }}>(Mandatory)</span>
+                  </label>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                    Actual physical GPS location of the processing facility used to calculate collector pickup distances.
+                  </p>
+                </div>
                 <button
                   type="button"
-                  className="btn btn-ghost btn-sm"
+                  className={`btn ${form.latitude ? 'btn-outline' : 'btn-primary'} btn-sm`}
                   onClick={handleAutoDetectGps}
                   disabled={detectingGps}
-                  style={{ fontSize: '0.8rem', padding: '2px 8px', height: 'auto' }}
+                  style={{ fontSize: '0.82rem', padding: '5px 12px' }}
                 >
-                  {detectingGps ? <><LoadingSpinner size="sm" /> Locating…</> : '📍 Detect GPS'}
+                  {detectingGps ? <><LoadingSpinner size="sm" /> Acquiring GPS…</> : form.latitude ? '📍 Change Location' : '📍 Detect / Set Location'}
                 </button>
               </div>
-              <input
-                id="apply-location"
-                className="form-input"
-                placeholder="e.g. Peenya Industrial Area, Bengaluru or Okhla, Delhi"
-                value={form.facility_location}
-                onChange={e => setForm(f => ({ ...f, facility_location: e.target.value }))}
-              />
-              {gpsStatus && (
-                <p className="form-hint" style={{ color: form.latitude ? 'var(--color-success, #16a34a)' : 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  {detectingGps && <LoadingSpinner size="sm" />}
-                  <span>{gpsStatus}</span>
-                </p>
+
+              {form.latitude != null && form.longitude != null ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', background: 'var(--color-bg, #fff)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--color-border)' }}>
+                  <div>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em' }}>FACILITY GPS COORDINATES</span>
+                    <span className="font-mono" style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--color-text)' }}>
+                      {form.latitude.toFixed(6)}, {form.longitude.toFixed(6)}
+                    </span>
+                  </div>
+                  {form.location_accuracy != null && (
+                    <span
+                      className={`status-badge ${form.location_accuracy <= 20 ? 'status-badge--success' : form.location_accuracy <= 50 ? 'status-badge--warning' : 'status-badge--error'}`}
+                      style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                    >
+                      {form.location_accuracy <= 20 ? '🟢 High' : form.location_accuracy <= 50 ? '🟡 Acceptable' : '🔴 Low'}: ±{form.location_accuracy}m
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setForm(f => ({ ...f, latitude: null, longitude: null, location_accuracy: null }))}
+                    style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#dc2626', padding: '2px 8px' }}
+                    title="Reset coordinates"
+                  >
+                    Reset
+                  </button>
+                </div>
+              ) : (
+                <div style={{ padding: '10px 14px', borderRadius: '6px', background: 'rgba(220, 38, 38, 0.06)', border: '1px solid rgba(220, 38, 38, 0.25)', fontSize: '0.82rem', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>⚠️</span>
+                  <span>GPS coordinates are not set. You must click <strong>"Detect / Set Location"</strong> to complete registration.</span>
+                </div>
               )}
-              {!gpsStatus && (
-                <p className="form-hint">
-                  Coordinates will be automatically resolved from this address and mapped for collectors.
+
+              {gpsStatus && (
+                <p className="form-hint" style={{ marginTop: '8px', marginBottom: 0, fontSize: '0.8rem', color: form.latitude ? 'var(--color-success, #16a34a)' : 'var(--color-primary)' }}>
+                  {gpsStatus}
                 </p>
               )}
             </div>

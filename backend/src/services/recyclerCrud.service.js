@@ -3,12 +3,18 @@ import { ApiError } from '../utils/ApiError.js';
 import { resolveLocationCoords } from './location.service.js';
 import { uploadImage } from './cloudinary.service.js';
 
-let profileImageColEnsured = false;
-async function ensureProfileImageColumn() {
-  if (profileImageColEnsured) return;
+let recyclerColsEnsured = false;
+async function ensureRecyclerColumns() {
+  if (recyclerColsEnsured) return;
   try {
-    await query('ALTER TABLE recyclers ADD COLUMN IF NOT EXISTS profile_image TEXT');
-    profileImageColEnsured = true;
+    await query(`
+      ALTER TABLE recyclers ADD COLUMN IF NOT EXISTS profile_image TEXT,
+      ADD COLUMN IF NOT EXISTS facility_address TEXT,
+      ADD COLUMN IF NOT EXISTS location_accuracy DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS location_source VARCHAR(50) DEFAULT 'GPS',
+      ADD COLUMN IF NOT EXISTS location_updated_at TIMESTAMP DEFAULT NOW()
+    `);
+    recyclerColsEnsured = true;
   } catch (e) {}
 }
 
@@ -18,8 +24,9 @@ async function ensureProfileImageColumn() {
  * @returns {Promise<Object>}
  */
 export const createRecycler = async (data) => {
+  await ensureRecyclerColumns();
   const {
-    name, facility_location, latitude, longitude,
+    name, facility_location, facility_address, latitude, longitude, location_accuracy, location_source,
     materials_accepted, authorization_status, authorization_details,
     authorization_number, authorization_issue_date, authorization_valid_until, authorization_document_url,
     verification_source, contact_details, pickup_availability, service_area,
@@ -31,7 +38,7 @@ export const createRecycler = async (data) => {
   // Auto-resolve coordinates if not explicitly supplied
   if (finalLat == null || finalLng == null) {
     try {
-      const loc = facility_location || service_area || name;
+      const loc = facility_location || facility_address || service_area || name;
       if (loc) {
         const resolved = await resolveLocationCoords(loc);
         finalLat = resolved.lat;
@@ -52,20 +59,35 @@ export const createRecycler = async (data) => {
     }
   }
 
+  const finalSource = location_source || (finalLat != null ? 'GPS' : 'SEEDED');
+
   const result = await query(
     `INSERT INTO recyclers 
-       (name, facility_location, latitude, longitude, materials_accepted,
-        authorization_status, authorization_details, authorization_number,
+       (name, facility_location, facility_address, latitude, longitude, location_accuracy, location_source, location_updated_at,
+        materials_accepted, authorization_status, authorization_details, authorization_number,
         authorization_issue_date, authorization_valid_until, authorization_document_url,
         verification_source, contact_details, pickup_availability, service_area)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
      RETURNING *`,
     [
-      name, facility_location ?? null, finalLat ?? null, finalLng ?? null,
-      JSON.stringify(materials_accepted), authorization_status,
-      authorization_details ?? null, authorization_number ?? null,
-      authorization_issue_date ?? null, authorization_valid_until ?? null, authorization_document_url ?? null,
-      verification_source ?? null, contact_details ?? null, pickup_availability ?? null, service_area ?? null,
+      name,
+      facility_location ?? facility_address ?? null,
+      facility_address ?? facility_location ?? null,
+      finalLat ?? null,
+      finalLng ?? null,
+      location_accuracy ?? null,
+      finalSource,
+      JSON.stringify(materials_accepted),
+      authorization_status,
+      authorization_details ?? null,
+      authorization_number ?? null,
+      authorization_issue_date ?? null,
+      authorization_valid_until ?? null,
+      authorization_document_url ?? null,
+      verification_source ?? null,
+      contact_details ?? null,
+      pickup_availability ?? null,
+      service_area ?? null,
     ]
   );
 
@@ -97,7 +119,11 @@ export const loginRecycler = async (id) => {
   if (recycler.authorization_status === 'pending') {
     throw new ApiError(403, 'Recycler profile is pending admin verification');
   }
-  if (recycler.authorization_status !== 'authorized') {
+  if (recycler.authorization_status === 'unauthorized' || recycler.authorization_status === 'expired' || recycler.account_status === 'SUSPENDED') {
+    throw new ApiError(403, 'Recycler authorization has expired or account is suspended. Please contact platform admin or submit renewal.');
+  }
+  const allowedStatuses = ['authorized', 'valid', 'expiring_soon', 'renewal_pending'];
+  if (!allowedStatuses.includes(recycler.authorization_status)) {
     throw new ApiError(403, 'Recycler is not authorized to use the portal');
   }
 
@@ -196,7 +222,7 @@ export const listRecyclers = async ({ authorization_status, material, location, 
  * @returns {Promise<Object>}
  */
 export const updateRecycler = async (id, updates) => {
-  await ensureProfileImageColumn();
+  await ensureRecyclerColumns();
   const existing = await getRecyclerById(id);
 
   const fields = [];
@@ -206,8 +232,12 @@ export const updateRecycler = async (id, updates) => {
   const columnMap = {
     name: 'name',
     facility_location: 'facility_location',
+    facility_address: 'facility_address',
     latitude: 'latitude',
     longitude: 'longitude',
+    location_accuracy: 'location_accuracy',
+    location_source: 'location_source',
+    location_updated_at: 'location_updated_at',
     materials_accepted: 'materials_accepted',
     account_status: 'account_status',
     authorization_status: 'authorization_status',
@@ -224,6 +254,11 @@ export const updateRecycler = async (id, updates) => {
     pickup_availability: 'pickup_availability',
     service_area: 'service_area',
   };
+
+  if (updates.latitude != null && updates.longitude != null) {
+    updates.location_updated_at = new Date();
+    if (!updates.location_source) updates.location_source = 'GPS';
+  }
 
   // If new profile image / avatar is provided (as base64 Data URL), upload to Cloudinary
   if (updates.profile_image || updates.image_ref) {

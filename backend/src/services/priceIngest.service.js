@@ -140,7 +140,7 @@ export const getRecyclerRateBoard = async ({ category, location }) => {
         ORDER BY (location = $2) DESC, (location = $3) DESC, price_date DESC, id DESC
         LIMIT 1
       ) p ON true
-      WHERE r.authorization_status = 'authorized'
+      WHERE r.authorization_status IN ('authorized', 'valid', 'expiring_soon')
         AND (
           r.materials_accepted ? $1
           OR ($1 = 'Plastic' AND (r.materials_accepted ? 'Mixed Plastic' OR r.materials_accepted ? 'Plastics' OR r.materials_accepted ? 'Mixed Plastics'))

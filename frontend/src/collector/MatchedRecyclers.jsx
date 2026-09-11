@@ -589,7 +589,7 @@ export default function MatchedRecyclers() {
                       <p className="recycler-card__area">{r.service_area || r.facility_location}</p>
                     </div>
                   </div>
-                  <StatusBadge status="authorized" />
+                  <StatusBadge status={r.authorization_status || 'authorized'} />
                 </div>
 
                 {/* Suitability Score Bar */}

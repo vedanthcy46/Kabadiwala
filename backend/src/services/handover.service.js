@@ -286,7 +286,7 @@ export const initiateHandover = async (data) => {
   if (recyclerResult.rows.length === 0) {
     throw new ApiError(404, 'Recycler not found');
   }
-  if (recyclerResult.rows[0].authorization_status !== 'authorized') {
+  if (!['authorized', 'valid', 'expiring_soon', 'renewal_pending'].includes(recyclerResult.rows[0].authorization_status) || recyclerResult.rows[0].account_status === 'SUSPENDED') {
     throw new ApiError(400, 'Can only hand over to authorized recyclers');
   }
   const recycler = recyclerResult.rows[0];
