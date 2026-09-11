@@ -8,6 +8,7 @@ import {
 import { currentCollectorId, getSession } from '../services/auth';
 import { StatusBadge } from '../components/StatusBadge';
 import { PageLoader, LoadingSpinner } from '../components/LoadingSpinner';
+import MapLink from '../components/MapLink';
 import RecyclersMap from './RecyclersMap';
 import { useTranslation } from '../i18n/config.js';
 import './MatchedRecyclers.css';
@@ -587,6 +588,16 @@ export default function MatchedRecyclers() {
                     <div>
                       <h2 className="recycler-card__name">{r.name}</h2>
                       <p className="recycler-card__area">{r.service_area || r.facility_location}</p>
+                      <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)' }}>
+                        <MapLink
+                          lat={r.latitude}
+                          lng={r.longitude}
+                          location={r.facility_location || r.service_area}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          📍 Use exact GPS location
+                        </MapLink>
+                      </p>
                     </div>
                   </div>
                   <StatusBadge status={r.authorization_status || 'authorized'} />

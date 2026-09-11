@@ -703,7 +703,8 @@ export const getLotsByRecycler = async (recyclerId) => {
   const result = await query(
     `SELECT m.*,
             t.transaction_status, t.payment_status, t.final_price, t.payment_method,
-            t.collection_location AS raw_collection_location,
+          t.collection_location AS raw_collection_location,
+          t.collection_lat, t.collection_lng,
             c.name AS raw_collector_name,
             c.phone AS raw_collector_phone,
             r.name AS recycler_name,

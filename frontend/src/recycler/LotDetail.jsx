@@ -515,7 +515,13 @@ export default function LotDetail() {
                   <div>
                     <span className="detail-item__label" style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Pickup Location</span>
                     <p style={{ margin: '2px 0 0 0', fontWeight: '500' }}>
-                      {lotMeta?.exact_pickup_location || lotMeta?.collection_location || 'Bengaluru'}
+                      <MapLink
+                        lat={lotMeta?.collection_lat}
+                        lng={lotMeta?.collection_lng}
+                        location={lotMeta?.exact_pickup_location || lotMeta?.collection_location || 'Bengaluru'}
+                      >
+                        {lotMeta?.exact_pickup_location || lotMeta?.collection_location || 'Bengaluru'}
+                      </MapLink>
                     </p>
                   </div>
                 </div>
