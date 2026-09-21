@@ -11,7 +11,7 @@
  * so the old cache is cleaned up automatically.
  */
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2-ml-support';
 const CACHE_NAME = `esetu-shell-${CACHE_VERSION}`;
 
 // Assets to pre-cache on install (app shell)
@@ -89,11 +89,15 @@ self.addEventListener('fetch', (event) => {
       // Not in cache → fetch from network and cache the response
       return fetch(request)
         .then((response) => {
-          // Only cache valid responses for same-origin assets
+          // Cache same-origin basic assets OR TensorFlow.js cross-origin models
+          const isTFJSModel = url.hostname === 'storage.googleapis.com' || url.hostname === 'unpkg.com';
+          
           if (
             response.ok &&
-            response.type === 'basic' &&
-            url.origin === self.location.origin
+            (
+              (response.type === 'basic' && url.origin === self.location.origin) ||
+              isTFJSModel
+            )
           ) {
             const cloned = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
@@ -104,6 +108,11 @@ self.addEventListener('fetch', (event) => {
           // For navigation requests, fall back to index.html (SPA)
           if (request.destination === 'document') {
             return caches.match('/index.html');
+          }
+          // If it's an ML model and we're offline (and it's not cached), fail hard to prevent TFJS from hanging
+          const isTFJSModel = url.hostname === 'storage.googleapis.com' || url.hostname === 'unpkg.com';
+          if (isTFJSModel) {
+             throw new TypeError('Offline: ML model not cached.');
           }
           // For other assets, just fail
           return new Response('Offline', { status: 503 });

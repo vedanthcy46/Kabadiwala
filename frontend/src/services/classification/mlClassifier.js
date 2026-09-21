@@ -38,7 +38,14 @@ const CATEGORIES = ['CRT', 'LCD', 'PCB', 'Cable', 'Battery', 'Motor', 'Plastic',
 export async function loadModel() {
   if (!modelInstance) {
     await tf.ready();
-    modelInstance = await mobilenet.load({ version: 2, alpha: 0.5 });
+    
+    // Add a timeout so it never hangs the UI indefinitely
+    const loadPromise = mobilenet.load({ version: 2, alpha: 0.5 });
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error("Model load timeout")), 10000)
+    );
+    
+    modelInstance = await Promise.race([loadPromise, timeoutPromise]);
   }
   return modelInstance;
 }
