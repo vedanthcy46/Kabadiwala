@@ -12,7 +12,7 @@ import { isOnline } from '../offline/offlineUtils.js';
 import { classifyPixels } from './analyze.js';
 
 let modelInstance = null;
-let modelLoadAttempted = false;
+let isLoading = false;
 
 // ── E-Waste category mapping from generic ImageNet class names ──────────────
 const CATEGORY_MAP = {
@@ -53,10 +53,10 @@ const DEMO_CATEGORIES = ['CRT', 'LCD', 'PCB', 'Cable', 'Battery', 'Motor', 'Plas
  */
 async function tryLoadModel() {
   if (modelInstance) return modelInstance;
-  if (modelLoadAttempted) return null; // Already failed — don't retry
+  if (isLoading) return null; // Prevent concurrent fetch floods
   if (!isOnline()) return null;
 
-  modelLoadAttempted = true;
+  isLoading = true;
   try {
     const [tf, mobilenet] = await Promise.all([
       import('@tensorflow/tfjs'),
@@ -75,6 +75,8 @@ async function tryLoadModel() {
     console.warn('[ML] TensorFlow model failed to load — will use heuristic:', err.message);
     modelInstance = null;
     return null;
+  } finally {
+    isLoading = false;
   }
 }
 
