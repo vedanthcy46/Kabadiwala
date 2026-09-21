@@ -12,7 +12,51 @@ import { loginRecycler, getAllRecyclers, onboardRecycler, adminVerifyRecycler, M
 import { saveSession } from '../services/auth';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import './Login.css';
+
+const defaultIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
+
+function LocationPickerMarker({ lat, lng, onLocationChange }) {
+  const map = useMapEvents({
+    click(e) {
+      onLocationChange(e.latlng.lat, e.latlng.lng);
+    },
+  });
+
+  useEffect(() => {
+    if (lat && lng) {
+      map.setView([lat, lng], map.getZoom(), { animate: true });
+    }
+  }, [lat, lng, map]);
+
+  if (!lat || !lng) return null;
+
+  return (
+    <Marker
+      position={[lat, lng]}
+      icon={defaultIcon}
+      draggable={true}
+      eventHandlers={{
+        dragend: (e) => {
+          const marker = e.target;
+          const position = marker.getLatLng();
+          onLocationChange(position.lat, position.lng);
+        },
+      }}
+    />
+  );
+}
 
 export default function RecyclerLogin() {
   const { t } = useTranslation();
@@ -475,13 +519,43 @@ export default function RecyclerLogin() {
                     style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#dc2626', padding: '2px 8px' }}
                     title="Reset coordinates"
                   >
-                    Reset
+                    × Reset
                   </button>
                 </div>
               ) : (
                 <div style={{ padding: '10px 14px', borderRadius: '6px', background: 'rgba(220, 38, 38, 0.06)', border: '1px solid rgba(220, 38, 38, 0.25)', fontSize: '0.82rem', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span>⚠️</span>
-                  <span>GPS coordinates are not set. You must click <strong>"Detect / Set Location"</strong> to complete registration.</span>
+                  <span>{gpsStatus || 'GPS coordinates are not set. You must click "Detect / Set Location" to complete registration.'}</span>
+                </div>
+              )}
+              {form.latitude != null && form.longitude != null && (
+                <div style={{ marginTop: 'var(--space-3)', height: '200px', borderRadius: 'var(--radius-md, 8px)', overflow: 'hidden', border: '1px solid var(--color-border, #e2e8f0)', position: 'relative', zIndex: 0 }}>
+                  <MapContainer center={[form.latitude, form.longitude]} zoom={15} style={{ height: '100%', width: '100%' }}>
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    />
+                    <LocationPickerMarker 
+                      lat={form.latitude} 
+                      lng={form.longitude} 
+                      onLocationChange={(lat, lng) => {
+                        setForm(f => {
+                          const isGpsLoc = !f.facility_location || f.facility_location.startsWith('GPS Location');
+                          return {
+                            ...f,
+                            latitude: lat,
+                            longitude: lng,
+                            facility_location: isGpsLoc ? `GPS Location (${lat.toFixed(4)}, ${lng.toFixed(4)})` : f.facility_location
+                          };
+                        });
+                      }} 
+                    />
+                  </MapContainer>
+                  <div style={{ position: 'absolute', bottom: '8px', left: '0', right: '0', textAlign: 'center', zIndex: 400, pointerEvents: 'none' }}>
+                    <span style={{ background: 'rgba(255,255,255,0.9)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '500', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                      Drag pin or tap map to adjust precise location
+                    </span>
+                  </div>
                 </div>
               )}
 
