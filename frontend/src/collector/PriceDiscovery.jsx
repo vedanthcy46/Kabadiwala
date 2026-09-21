@@ -10,10 +10,16 @@ import {
   getMarketPulse, refreshMarketPrices,
   MATERIAL_CATEGORIES, DEFAULT_LOCATION,
 } from '../api/client';
+import {
+  cachePriceCards, getCachedPriceCards,
+  cacheMarketPulse, getCachedMarketPulse,
+} from '../services/offline/cache.js';
+import { isOnline } from '../services/offline/offlineUtils.js';
 import { PageLoader, SkeletonCard, LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
 import './PriceDiscovery.css';
 import './PriceDiscoveryP2.css';
+
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
@@ -92,6 +98,10 @@ export default function PriceDiscovery() {
   const [syncingPrices, setSyncingPrices] = useState(false);
   const [syncToast, setSyncToast] = useState('');
 
+  // Offline cache state — shown when serving stale data
+  const [priceFromCache, setPriceFromCache] = useState(false);
+  const [priceCachedAt, setPriceCachedAt] = useState(null);
+
   const [userCoords, setUserCoords] = useState(null);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState('');
@@ -111,6 +121,22 @@ export default function PriceDiscovery() {
 
   const loadCards = useCallback(() => {
     setLoadingCards(true);
+    setPriceFromCache(false);
+
+    if (!isOnline()) {
+      // Offline — load from IndexedDB
+      getCachedPriceCards(location).then((cached) => {
+        if (cached?.cards) {
+          setPriceCards(cached.cards);
+          setPriceFromCache(true);
+          setPriceCachedAt(cached._cachedAt);
+        } else {
+          setPriceCards({});
+        }
+      }).finally(() => setLoadingCards(false));
+      return;
+    }
+
     Promise.allSettled(
       MATERIAL_CATEGORIES.map(cat =>
         getInstantValuation({ category: cat.id, location, weight: SAMPLE_WEIGHT })
@@ -123,6 +149,17 @@ export default function PriceDiscovery() {
         if (r.status === 'fulfilled') map[r.value.id] = r.value.data;
       });
       setPriceCards(map);
+      // Cache for offline use
+      cachePriceCards(location, map).catch(() => {});
+    }).catch(() => {
+      // Network error — fall back to cache
+      getCachedPriceCards(location).then((cached) => {
+        if (cached?.cards) {
+          setPriceCards(cached.cards);
+          setPriceFromCache(true);
+          setPriceCachedAt(cached._cachedAt);
+        }
+      }).catch(() => {});
     }).finally(() => setLoadingCards(false));
   }, [location]);
 
@@ -131,10 +168,27 @@ export default function PriceDiscovery() {
   }, [loadCards]);
 
   useEffect(() => {
+    if (!isOnline()) {
+      // Offline — load market pulse from cache
+      getCachedMarketPulse(location).then((cached) => {
+        if (cached?.pulse) setMarketPulse(cached.pulse);
+        else setMarketPulse(null);
+      }).catch(() => {});
+      return;
+    }
     getMarketPulse(location)
-      .then(r => setMarketPulse(r))
-      .catch(() => {});
+      .then(r => {
+        setMarketPulse(r);
+        cacheMarketPulse(location, r).catch(() => {});
+      })
+      .catch(() => {
+        // Network error — try cache
+        getCachedMarketPulse(location).then((cached) => {
+          if (cached?.pulse) setMarketPulse(cached.pulse);
+        }).catch(() => {});
+      });
   }, [location]);
+
 
   const fetchTrends = useCallback(() => {
     setLoadingTrend(true);
@@ -467,6 +521,36 @@ export default function PriceDiscovery() {
       {syncToast && (
         <div className="alert-banner alert-banner--success animate-fade-in" role="status" style={{ marginBottom: 'var(--space-4)' }}>
           ✅ {syncToast}
+        </div>
+      )}
+
+      {priceFromCache && (
+        <div
+          className="alert-banner animate-fade-in"
+          role="status"
+          style={{
+            marginBottom: 'var(--space-4)',
+            background: 'var(--color-warning-light, #fef9c3)',
+            borderColor: 'var(--color-warning, #ca8a04)',
+            color: 'var(--color-warning, #854d0e)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            flexWrap: 'wrap',
+          }}
+        >
+          <span aria-hidden="true"></span>
+          <span>
+            <strong>Showing last synchronized rates</strong>
+            {priceCachedAt && (
+              <> · as of {new Date(priceCachedAt).toLocaleString('en-IN', {
+                day: 'numeric', month: 'short',
+                hour: '2-digit', minute: '2-digit',
+                timeZone: 'Asia/Kolkata',
+              })}</>
+            )}
+            . Connect to internet to get live prices.
+          </span>
         </div>
       )}
 

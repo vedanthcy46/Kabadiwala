@@ -4,7 +4,7 @@ import { ApiError } from '../utils/ApiError.js';
 
 dotenv.config();
 
-const MAX_DATA_URL_BYTES = 6 * 1024 * 1024;
+const MAX_DATA_URL_BYTES = 12 * 1024 * 1024;
 
 const isDataImage = (value) => typeof value === 'string' && /^data:image\/[a-zA-Z0-9.+_-]+;base64,/i.test(value);
 
@@ -28,7 +28,7 @@ export const uploadImage = async (image, { folder = 'kabadiwala/uploads', public
   if (!isDataImage(image)) return image;
 
   if (Buffer.byteLength(image, 'utf8') > MAX_DATA_URL_BYTES) {
-    throw new ApiError(413, 'Image is too large. Please choose a photo under 6 MB.');
+    throw new ApiError(413, 'Image is too large. Please choose a photo under 9 MB.');
   }
   if (!cloudinaryReady()) {
     console.warn('[cloudinary] Storage not configured. Image not uploaded.');

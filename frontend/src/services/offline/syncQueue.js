@@ -30,9 +30,9 @@ const STORE = 'syncQueue';
  * Enqueue an offline operation.
  * Returns the assigned IndexedDB id.
  */
-export async function enqueue({ operation, entity, entityId, payload }) {
+export async function enqueue({ operation, entity, entityId, payload, clientId }) {
   const record = {
-    clientId: generateClientId(),
+    clientId: clientId ?? generateClientId(),
     operation,
     entity,
     entityId: entityId ?? null,
@@ -42,6 +42,7 @@ export async function enqueue({ operation, entity, entityId, payload }) {
     status: 'pending',
     lastError: null,
   };
+
   const id = await dbAdd(STORE, record);
   return { ...record, id };
 }

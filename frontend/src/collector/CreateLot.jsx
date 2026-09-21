@@ -6,7 +6,9 @@ import {
   submitAiFeedback, updateAiFeedback,
 } from '../api/client';
 import { currentCollectorId, clearSession, getSession } from '../services/auth';
-import { classifyFile } from '../services/classification/analyze';
+import { classifyFile } from '../services/classification/mlClassifier.js';
+import { cacheLastGps, getCachedLastGps } from '../services/offline/cache.js';
+import { isOnline } from '../services/offline/offlineUtils.js';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
 import './CreateLot.css';
@@ -175,6 +177,9 @@ export default function CreateLot() {
     }
     setDetectingGps(true);
     setGpsHint('Acquiring precise GPS coordinates…');
+
+    const timeout = isOnline() ? 8000 : 15000; // allow more time for cold lock when offline
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
@@ -185,15 +190,35 @@ export default function CreateLot() {
         setLocation(`GPS Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
         setGpsHint(`📍 Coordinates detected: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
         setDetectingGps(false);
+        
+        // Cache the successful GPS location for future offline use
+        cacheLastGps(latNum, lngNum).catch(() => {});
+
         if (category && weight && Number(weight) > 0) {
           fetchValuation(weight, category, `GPS Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
         }
       },
-      () => {
+      async () => {
+        // GPS failed. If offline, try to fallback to the last known GPS location
+        if (!isOnline()) {
+          const cachedGps = await getCachedLastGps();
+          if (cachedGps) {
+            setCollectionLat(cachedGps.lat);
+            setCollectionLng(cachedGps.lng);
+            setLocation(`GPS Location (${cachedGps.lat.toFixed(4)}, ${cachedGps.lng.toFixed(4)})`);
+            setGpsHint(`📍 Using last known offline coordinates: ${cachedGps.lat.toFixed(4)}, ${cachedGps.lng.toFixed(4)}`);
+            setDetectingGps(false);
+            if (category && weight && Number(weight) > 0) {
+              fetchValuation(weight, category, `GPS Location (${cachedGps.lat.toFixed(4)}, ${cachedGps.lng.toFixed(4)})`);
+            }
+            return;
+          }
+        }
+        
         setGpsHint('Could not access GPS. Using selected city.');
         setDetectingGps(false);
       },
-      { enableHighAccuracy: true, timeout: 8000 }
+      { enableHighAccuracy: true, timeout }
     );
   }
 

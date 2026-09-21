@@ -24,13 +24,14 @@ function resolveBaseUrl() {
 
 const BASE = resolveBaseUrl();
 
-import { isOnline } from '../services/offline/offlineUtils.js';
+import { isOnline, generateClientId } from '../services/offline/offlineUtils.js';
 import {
   cacheLots, getCachedLots,
   cacheTransactions, getCachedTransactions,
   cacheEarnings, getCachedEarnings,
 } from '../services/offline/cache.js';
 import { enqueue } from '../services/offline/syncQueue.js';
+import { dbPut } from '../services/offline/db.js';
 
 // Keys that hold identifiers / human-readable codes and must NEVER be coerced
 // to numbers, even if they happen to look numeric.
@@ -181,8 +182,6 @@ export const refreshMarketPrices = (days = 90) =>
 export const getRecyclerRateBoard = ({ category, location }) =>
   request(`/prices/ingest/recycler-rates?category=${encodeURIComponent(category)}&location=${encodeURIComponent(location)}`);
 
-// ── Handover / Lots ──────────────────────────────────────────────────────────
-
 /**
  * Create a material lot.
  *
@@ -191,19 +190,59 @@ export const getRecyclerRateBoard = ({ category, location }) =>
  *           POST /v1/handover/lots by the sync manager once online).
  *           Returns { queued: true, queueItem } — NOT a confirmed response.
  *
- * The caller MUST check result.queued to show the correct "Saved offline" UX.
+ * NOTE: image_refs (base64 data) are intentionally OMITTED from the offline
+ * queue because base64 images can be several MB each, which causes sync to
+ * fail with 413 / payload-too-large errors. The lot is created with all
+ * metadata intact; images can be re-uploaded when the collector is online.
  */
 export async function createLot(data) {
+  // Strip base64 images to prevent massive payloads and blocking uploads
+  const { image_refs: droppedImages, ...payloadWithoutImages } = data;
+  const hasImages = Array.isArray(droppedImages) && droppedImages.length > 0;
+
   if (!isOnline()) {
+    const clientId = generateClientId();
+    
+    // Store images separately so sync manager can upload them after the lot is created
+    if (hasImages) {
+      dbPut('offlineImages', {
+        clientId,
+        image_refs: droppedImages,
+        collector_id: data.collector_id,
+        gps: (data.collection_lat != null && data.collection_lng != null)
+          ? { lat: data.collection_lat, lng: data.collection_lng }
+          : null,
+      }).catch(() => {});
+    }
+
     const queueItem = await enqueue({
       operation: 'createLot',
       entity: 'lot',
       entityId: null,
-      payload: data,
+      clientId,
+      payload: payloadWithoutImages,
     });
-    return { queued: true, queueItem };
+    return { queued: true, queueItem, imagesDropped: hasImages };
   }
-  return request('/handover/lots', { method: 'POST', body: JSON.stringify(data) });
+
+  // ONLINE: create lot instantly without images
+  const res = await request('/handover/lots', { method: 'POST', body: JSON.stringify(payloadWithoutImages) });
+  
+  // Fire and forget image upload in the background
+  if (hasImages && res?.data?.lot?.lot_id) {
+    request(`/handover/lots/${res.data.lot.lot_id}/images`, {
+      method: 'POST',
+      body: JSON.stringify({
+        image_refs: droppedImages,
+        collector_id: data.collector_id,
+        gps: (data.collection_lat != null && data.collection_lng != null)
+          ? { lat: data.collection_lat, lng: data.collection_lng }
+          : null,
+      })
+    }).catch(err => console.warn('[Background] Image upload failed:', err));
+  }
+
+  return res;
 }
 
 /**

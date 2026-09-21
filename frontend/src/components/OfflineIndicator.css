@@ -3,20 +3,23 @@
 .offline-indicator {
   position: fixed;
   bottom: calc(64px + var(--space-3));  /* above mobile bottom nav */
-  left: 50%;
-  transform: translateX(-50%);
+  left: var(--space-3);
+  right: var(--space-3);
   z-index: 300;
   animation: slideUpIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
   pointer-events: auto;
+  /* Center the button within the full-width container */
+  display: flex;
+  justify-content: center;
 }
 
-/* On desktop — move to bottom-right corner */
+/* On desktop — move to bottom-right corner, auto width */
 @media (min-width: 641px) {
   .offline-indicator {
     bottom: var(--space-6);
     left: auto;
     right: var(--space-6);
-    transform: none;
+    display: block;
   }
 }
 
@@ -32,7 +35,9 @@
   box-shadow: var(--shadow-md);
   transition: all var(--transition-base);
   white-space: nowrap;
-  max-width: min(360px, calc(100vw - var(--space-8)));
+  /* Prevent the button overflowing its container */
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .offline-indicator__text {
@@ -98,23 +103,10 @@
 @keyframes slideUpIn {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(12px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-@media (min-width: 641px) {
-  @keyframes slideUpIn {
-    from {
-      opacity: 0;
-      transform: translateY(12px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    transform: translateY(0);
   }
 }

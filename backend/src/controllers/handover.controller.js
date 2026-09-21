@@ -9,6 +9,21 @@ export const createLot = async (req, res) => {
   });
 };
 
+export const uploadLotImages = async (req, res) => {
+  const result = await handoverService.uploadLotImages(
+    req.params.lotId,
+    req.body.image_refs,
+    req.body.collector_id,
+    req.body.gps
+  );
+
+  res.status(200).json({
+    success: true,
+    data: result,
+  });
+};
+
+
 export const initiateHandover = async (req, res) => {
   const result = await handoverService.initiateHandover(req.body);
 

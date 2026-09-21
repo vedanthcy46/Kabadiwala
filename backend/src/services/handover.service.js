@@ -250,6 +250,74 @@ export const createLot = async (data) => {
 };
 
 /**
+ * Upload collection images for an existing lot.
+ *
+ * Used when a lot was created offline (without images) and images need to
+ * be attached after the lot syncs to the server.
+ *
+ * @param {string}  lotId
+ * @param {string[]} image_refs   - base64 data-URL strings
+ * @param {number}  collector_id
+ * @param {Object}  gps           - { lat, lng } | null
+ * @returns {Promise<Object>}     - { lot_id, uploaded_count, image_urls }
+ */
+export const uploadLotImages = async (lotId, image_refs, collector_id, gps = null) => {
+  // Verify lot exists and belongs to this collector
+  const lotResult = await query(
+    `SELECT lot_id, collector_id FROM materials WHERE lot_id = $1`,
+    [lotId]
+  );
+  if (lotResult.rows.length === 0) {
+    throw new ApiError(404, `Lot ${lotId} not found`);
+  }
+  if (String(lotResult.rows[0].collector_id) !== String(collector_id)) {
+    throw new ApiError(403, 'Not authorised to upload images for this lot');
+  }
+
+  if (!Array.isArray(image_refs) || image_refs.length === 0) {
+    return { lot_id: lotId, uploaded_count: 0, image_urls: [] };
+  }
+
+  const uploaded = await Promise.all(
+    image_refs.map(async (img, i) => {
+      try {
+        const url = await uploadLotImage(img, { lotId, imageType: `COLLECTION-OFFLINE-${i + 1}` });
+        if (!url) throw new Error('Cloudinary returned null URL (check config or payload size)');
+        return url;
+      } catch (err) {
+        console.error(`[uploadLotImages] Failed to upload image ${i+1}:`, err.message);
+        throw new ApiError(500, `Image upload to Cloudinary failed: ${err.message}`);
+      }
+    })
+  );
+  const validUrls = uploaded.filter(Boolean);
+
+  for (const imageUrl of validUrls) {
+    await insertLotImage(
+      lotId, imageUrl, 'COLLECTION', 'collector',
+      collector_id, null, gps
+    );
+  }
+
+  if (validUrls.length > 0) {
+    // Update the lot's primary image_ref if not already set
+    await query(
+      `UPDATE materials SET image_ref = COALESCE(image_ref, $1) WHERE lot_id = $2`,
+      [validUrls[0], lotId]
+    ).catch(() => {});
+
+    await emitEvent(lotId, 'IMAGE_UPLOADED', 'collector', collector_id, {
+      image_type: 'COLLECTION',
+      image_count: validUrls.length,
+      source: 'offline_sync',
+    }, gps);
+  }
+
+  return { lot_id: lotId, uploaded_count: validUrls.length, image_urls: validUrls };
+};
+
+
+/**
  * Initiate a handover — creates a traceability record with a unique reference.
  *
  * Evidence chain additions:

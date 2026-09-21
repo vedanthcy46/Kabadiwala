@@ -27,6 +27,7 @@ import {
   markSuccess,
   markFailed,
 } from './syncQueue.js';
+import { dbGet, dbDelete } from './db.js';
 
 const BASE_DELAY_MS = 1000;
 const MAX_RETRIES = 3;
@@ -66,6 +67,36 @@ async function executeOperation(item) {
         err.status = res.status;
         throw err;
       }
+      
+      // Look for any dropped images in the offline store
+      if (json?.data?.lot?.lot_id && clientId) {
+        try {
+          const offlineImgData = await dbGet('offlineImages', clientId);
+          if (offlineImgData && Array.isArray(offlineImgData.image_refs) && offlineImgData.image_refs.length > 0) {
+            const imgRes = await fetch(`/v1/handover/lots/${json.data.lot.lot_id}/images`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                image_refs: offlineImgData.image_refs,
+                collector_id: offlineImgData.collector_id,
+                gps: offlineImgData.gps,
+              }),
+            });
+            if (imgRes.ok) {
+              await dbDelete('offlineImages', clientId);
+            } else {
+              console.warn('[Sync] Image upload returned error status:', imgRes.status);
+              // Leave the images in offlineImages for a manual retry or cleanup later
+            }
+          } else {
+            await dbDelete('offlineImages', clientId);
+          }
+        } catch (imgErr) {
+          // If image upload fails (e.g. timeout), don't fail the lot creation sync.
+          console.warn('[Sync] Image upload for synced lot failed:', imgErr);
+        }
+      }
+      
       return json;
     }
 

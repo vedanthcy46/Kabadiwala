@@ -102,3 +102,87 @@ export async function getCachedEarnings(collectorId) {
     return null;
   }
 }
+
+// ── Price Cards (per-category instant valuation) ───────────────────────────
+
+/**
+ * Persist all price cards (all categories for a location).
+ * Key: location string.
+ */
+export async function cachePriceCards(location, cards) {
+  if (!cards || typeof cards !== 'object') return;
+  try {
+    await dbPut('priceCache', {
+      _key: `cards::${location}`,
+      cards,
+      _cachedAt: now(),
+    });
+  } catch { /* IndexedDB unavailable — fail silently */ }
+}
+
+/**
+ * Retrieve cached price cards for a location.
+ * Returns null if nothing cached.
+ */
+export async function getCachedPriceCards(location) {
+  try {
+    return await dbGet('priceCache', `cards::${location}`);
+  } catch {
+    return null;
+  }
+}
+
+// ── Market Pulse ──────────────────────────────────────────────────────────
+
+/**
+ * Persist market pulse data for a location.
+ */
+export async function cacheMarketPulse(location, pulse) {
+  if (!pulse) return;
+  try {
+    await dbPut('priceCache', {
+      _key: `pulse::${location}`,
+      pulse,
+      _cachedAt: now(),
+    });
+  } catch { /* fail silently */ }
+}
+
+/**
+ * Retrieve cached market pulse for a location.
+ */
+export async function getCachedMarketPulse(location) {
+  try {
+    const key = `pulse::${location.toLowerCase()}`;
+    const row = await dbGet('priceCache', key);
+    return row ? row.data : null;
+  } catch (err) {
+    console.warn('[Offline Cache] Failed to read market pulse:', err);
+    return null;
+  }
+}
+
+// ── App Config / GPS ────────────────────────────────────────────────────────
+
+export async function cacheLastGps(lat, lng) {
+  try {
+    await dbPut('appConfig', {
+      key: 'last_known_gps',
+      lat,
+      lng,
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.warn('[Offline Cache] Failed to cache GPS:', err);
+  }
+}
+
+export async function getCachedLastGps() {
+  try {
+    const row = await dbGet('appConfig', 'last_known_gps');
+    return row ? { lat: row.lat, lng: row.lng, timestamp: row.timestamp } : null;
+  } catch (err) {
+    console.warn('[Offline Cache] Failed to read cached GPS:', err);
+    return null;
+  }
+}

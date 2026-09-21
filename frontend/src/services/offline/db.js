@@ -13,7 +13,7 @@
  */
 
 const DB_NAME = 'reloop_v1';
-const DB_VERSION = 1;
+const DB_VERSION = 4;  // bumped: added appConfig store
 
 let _db = null;
 
@@ -50,6 +50,21 @@ function openDB() {
           autoIncrement: true,
         });
         qStore.createIndex('status', 'status', { unique: false });
+      }
+
+      // --- price cache (instant valuation + market pulse) ---
+      if (!db.objectStoreNames.contains('priceCache')) {
+        db.createObjectStore('priceCache', { keyPath: '_key' });
+      }
+
+      // --- offline images ---
+      if (!db.objectStoreNames.contains('offlineImages')) {
+        db.createObjectStore('offlineImages', { keyPath: 'clientId' });
+      }
+
+      // --- app config (general settings, cached GPS, etc) ---
+      if (!db.objectStoreNames.contains('appConfig')) {
+        db.createObjectStore('appConfig', { keyPath: 'key' });
       }
     };
 
