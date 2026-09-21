@@ -28,6 +28,7 @@ import {
   markFailed,
 } from './syncQueue.js';
 import { dbGet, dbDelete } from './db.js';
+import { request } from '../../api/client.js';
 
 const BASE_DELAY_MS = 1000;
 const MAX_RETRIES = 3;
@@ -42,7 +43,6 @@ function emit(type, detail = {}) {
 
 // ── Operation handlers ────────────────────────────────────────────────────
 // Map operation names → actual fetch calls.
-// We import lazily to avoid circular imports with client.js.
 
 async function executeOperation(item) {
   const { operation, payload, clientId } = item;
@@ -56,36 +56,30 @@ async function executeOperation(item) {
 
   switch (operation) {
     case 'createLot': {
-      const res = await fetch('/v1/handover/lots', {
+      const json = await request('/handover/lots', {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
       });
-      const json = await res.json();
-      if (!res.ok) {
-        const err = new Error(json.message || `HTTP ${res.status}`);
-        err.status = res.status;
-        throw err;
-      }
       
       // Look for any dropped images in the offline store
       if (json?.data?.lot?.lot_id && clientId) {
         try {
           const offlineImgData = await dbGet('offlineImages', clientId);
           if (offlineImgData && Array.isArray(offlineImgData.image_refs) && offlineImgData.image_refs.length > 0) {
-            const imgRes = await fetch(`/v1/handover/lots/${json.data.lot.lot_id}/images`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                image_refs: offlineImgData.image_refs,
-                collector_id: offlineImgData.collector_id,
-                gps: offlineImgData.gps,
-              }),
-            });
-            if (imgRes.ok) {
+            try {
+               await request(`/handover/lots/${json.data.lot.lot_id}/images`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  image_refs: offlineImgData.image_refs,
+                  collector_id: offlineImgData.collector_id,
+                  gps: offlineImgData.gps,
+                }),
+              });
               await dbDelete('offlineImages', clientId);
-            } else {
-              console.warn('[Sync] Image upload returned error status:', imgRes.status);
+            } catch (imgErr) {
+              console.warn('[Sync] Image upload returned error status:', imgErr);
               // Leave the images in offlineImages for a manual retry or cleanup later
             }
           } else {
@@ -101,18 +95,11 @@ async function executeOperation(item) {
     }
 
     case 'initiateHandover': {
-      const res = await fetch('/v1/handover/initiate', {
+      return await request('/handover/initiate', {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
       });
-      const json = await res.json();
-      if (!res.ok) {
-        const err = new Error(json.message || `HTTP ${res.status}`);
-        err.status = res.status;
-        throw err;
-      }
-      return json;
     }
 
     default:
