@@ -9,7 +9,7 @@
  */
 
 import { isOnline } from '../offline/offlineUtils.js';
-import { classifyFile as heuristicClassifyFile } from './analyze.js';
+import { classifyPixels } from './analyze.js';
 
 let modelInstance = null;
 let modelLoadAttempted = false;
@@ -202,11 +202,21 @@ export async function classifyFile(file) {
     console.log('[ML] Offline — using heuristic classifier directly');
   }
 
-  // Heuristic fallback (always works, 100% offline)
-  const heuristic = await heuristicClassifyFile(file);
-  return {
-    ...heuristic,
-    modelVersion: 'On-device (Offline)',
-  };
+  // Pure local pixel heuristic — zero network calls, works 100% offline
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = reject;
+      image.src = url;
+    });
+    const heuristic = classifyPixels(img);
+    return {
+      ...heuristic,
+      modelVersion: 'On-device (Offline)',
+    };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
-

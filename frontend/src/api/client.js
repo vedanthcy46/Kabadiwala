@@ -31,7 +31,7 @@ import {
   cacheEarnings, getCachedEarnings,
 } from '../services/offline/cache.js';
 import { enqueue } from '../services/offline/syncQueue.js';
-import { dbPut } from '../services/offline/db.js';
+import { dbPut, dbGet } from '../services/offline/db.js';
 
 // Keys that hold identifiers / human-readable codes and must NEVER be coerced
 // to numbers, even if they happen to look numeric.
@@ -122,9 +122,55 @@ async function request(path, options = {}) {
 // ── Health ──────────────────────────────────────────────────────────────────
 export const checkHealth = () => request('/health');
 
-// ── Valuation ───────────────────────────────────────────────────────────────
-export const getInstantValuation = ({ category, location, weight }) =>
-  request(`/valuation/instant?category=${encodeURIComponent(category)}&location=${encodeURIComponent(location)}&weight=${weight}`);
+/**
+ * Get instant valuation for a category + location + weight.
+ * Online  → hits backend, caches the per-kg rate in IndexedDB.
+ * Offline → reads cached per-kg rate, returns stale estimate with a flag.
+ */
+export const getInstantValuation = async ({ category, location, weight }) => {
+  const cacheKey = `valuation::${category}::${location}`;
+
+  if (!isOnline()) {
+    // Serve from cache
+    try {
+      const cached = await dbGet('priceCache', cacheKey);
+      if (cached) {
+        const estimatedValue = cached.unit_price * Number(weight);
+        return {
+          data: {
+            ...cached.data,
+            estimated_value: estimatedValue,
+            benchmark_available: true,
+            offline_cache: true,
+            cached_at: cached._cachedAt,
+          }
+        };
+      }
+    } catch (err) { 
+      console.warn('[Offline Cache] Failed to read valuation cache:', err);
+    }
+    // No cache — tell UI no data
+    return { data: { benchmark_available: false, offline_cache: true } };
+  }
+
+  const res = await request(`/valuation/instant?category=${encodeURIComponent(category)}&location=${encodeURIComponent(location)}&weight=${weight}`);
+
+  // Cache the per-kg rate for offline use
+  if (res?.data?.unit_price) {
+    try {
+      await dbPut('priceCache', {
+        _key: cacheKey,
+        unit_price: res.data.unit_price,
+        data: res.data,
+        _cachedAt: new Date().toISOString(),
+      });
+    } catch (err) { 
+      console.warn('[Offline Cache] Failed to write valuation cache:', err);
+    }
+  }
+
+  return res;
+};
 
 // ── Recyclers ───────────────────────────────────────────────────────────────
 export const getMatchedRecyclers = ({ category, lat, lng, maxDistanceKm, location } = {}) => {
