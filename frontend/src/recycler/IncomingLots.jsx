@@ -215,7 +215,30 @@ export default function IncomingLots() {
                   <div className="quote-item__status">
                     {lot.approx_weight_kg ?? '—'} kg · est. {fmt(lot.market_estimate)}
                     {lot.market_estimate && lot.approx_weight_kg ? ` (${fmt(lot.market_estimate / lot.approx_weight_kg)}/kg)` : ''}
-                    {lot.collection_location ? ` · ${lot.collection_location}` : ''}
+                  </div>
+                  <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', fontSize: '0.82rem' }}>
+                    {lot.collection_location && (
+                      <span style={{ color: 'var(--color-text-muted)' }}>📍 {lot.collection_location}</span>
+                    )}
+                    {lot.collection_lat && lot.collection_lng ? (
+                      <a
+                        href={`https://www.google.com/maps?q=${lot.collection_lat},${lot.collection_lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: 'var(--color-primary)', textDecoration: 'underline', display: 'flex', alignItems: 'center', gap: '3px' }}
+                      >
+                        🗺️ View on Google Maps ({Number(lot.collection_lat).toFixed(4)}, {Number(lot.collection_lng).toFixed(4)})
+                      </a>
+                    ) : lot.collection_location ? (
+                      <a
+                        href={`https://www.google.com/maps/search/${encodeURIComponent(lot.collection_location)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: 'var(--color-primary)', textDecoration: 'underline', display: 'flex', alignItems: 'center', gap: '3px' }}
+                      >
+                        🗺️ Search on Google Maps
+                      </a>
+                    ) : null}
                   </div>
                 </div>
                 <div className="quote-item__actions">

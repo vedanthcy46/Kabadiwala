@@ -706,80 +706,153 @@ export default function CollectorLotDetail() {
                 </div>
               </div>
             ) : openOffers.length > 0 ? (
-              <>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>🔐</span>
-                  <span>Recycler contact phone & direct details remain protected until you accept a quote.</span>
-                </div>
-                <ul className="quote-list">
-                  {openOffers.map((o) => {
-                    const isPriced = o.offer_status === 'offered';
-                    const offerRate = isPriced ? Number(o.offered_price) : null;
-                    const offerEstTotal = isPriced && approxWeight > 0
-                      ? Math.round(offerRate * approxWeight)
-                      : null;
-                    // 'requested' means collector invited recycler directly; 'offered' can be either
-                    // direct or open-market (recycler proactively quoted from the open pool)
-                    const isOpenMarket = isPriced && !o.is_direct_request;
-                    return (
-                      <li key={o.id} className="quote-item">
-                        <div className="quote-item__main">
-                          <div className="quote-item__name">
-                            {o.recycler_name}
-                            {isOpenMarket && (
-                              <span className="pill" style={{ marginLeft: '6px', fontSize: '0.7rem', background: 'var(--color-primary-light)', color: 'var(--color-primary)' }}>
-                                Open Market
-                              </span>
-                            )}
-                            {!isPriced && (
-                              <span className="pill" style={{ marginLeft: '6px', fontSize: '0.7rem', background: 'var(--color-warning-light)', color: 'var(--color-warning)' }}>
-                                Awaiting Quote
-                              </span>
-                            )}
-                          </div>
-                          <div className="quote-item__status">
-                            {isPriced ? (
-                              <>
-                                <strong>₹{offerRate} / kg</strong>
-                                {offerEstTotal && (
-                                  <span className="text-muted text-xs" style={{ display: 'block' }}>
-                                    Est. Payout: {fmt(offerEstTotal)}
-                                  </span>
-                                )}
-                              </>
-                            ) : (
-                              <span className="text-muted text-xs">Recycler invited — price not submitted yet</span>
-                            )}
-                          </div>
+              (() => {
+                const openMarketOffers = openOffers.filter(o => o.offer_status === 'offered' && !o.is_direct_request);
+                const directOffers    = openOffers.filter(o => o.offer_status === 'offered' && o.is_direct_request);
+                const pendingInvites  = openOffers.filter(o => o.offer_status === 'requested');
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', background: 'var(--color-surface-alt)', borderRadius: '6px' }}>
+                      <span>🔐</span>
+                      <span>Recycler contact phone &amp; direct details are protected until you accept a quote.</span>
+                    </div>
+
+                    {/* ── Open Market Quotes ─────────────────────────── */}
+                    {openMarketOffers.length > 0 && (
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                          <span style={{ fontSize: '1rem' }}>🌐</span>
+                          <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '700', color: 'var(--color-primary)' }}>
+                            Open Market Quotes
+                          </h3>
+                          <span className="pill" style={{ fontSize: '0.7rem', background: 'var(--color-primary-light)', color: 'var(--color-primary)' }}>
+                            {openMarketOffers.length} bid{openMarketOffers.length !== 1 ? 's' : ''}
+                          </span>
                         </div>
-                        <div className="quote-item__actions">
-                          {isPriced ? (
-                            <>
-                              <button
-                                className="btn btn-accent btn-sm"
-                                disabled={!!offerBusy}
-                                onClick={() => handleOfferAction(o.id, 'accept')}
-                                aria-busy={offerBusy === o.id}
-                              >
-                                {t('quotes.accept')}
-                              </button>
-                              <button
-                                className="btn btn-outline btn-sm"
-                                disabled={!!offerBusy}
-                                onClick={() => handleOfferAction(o.id, 'reject')}
-                              >
-                                {t('quotes.reject')}
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-muted text-xs">Pending</span>
-                          )}
+                        <p className="text-muted text-xs" style={{ margin: '-6px 0 10px 0' }}>
+                          These recyclers proactively found your lot in the open marketplace and submitted a competitive bid.
+                        </p>
+                        <ul className="quote-list">
+                          {openMarketOffers.map((o) => {
+                            const offerRate = Number(o.offered_price);
+                            const offerEstTotal = approxWeight > 0 ? Math.round(offerRate * approxWeight) : null;
+                            return (
+                              <li key={o.id} className="quote-item" style={{ borderLeft: '3px solid var(--color-primary)', paddingLeft: '10px' }}>
+                                <div className="quote-item__main">
+                                  <div className="quote-item__name" style={{ fontWeight: '600' }}>
+                                    🏭 {o.recycler_name}
+                                  </div>
+                                  <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '0.85rem' }}>
+                                    <span><strong style={{ color: 'var(--color-primary)' }}>₹{offerRate}/kg</strong></span>
+                                    {offerEstTotal && <span className="text-muted">Est. Payout: <strong>{fmt(offerEstTotal)}</strong></span>}
+                                    {o.recycler_facility && <span className="text-muted">📍 {o.recycler_facility}</span>}
+                                    {o.recycler_pickup_availability && <span className="text-muted">🚛 {o.recycler_pickup_availability}</span>}
+                                  </div>
+                                </div>
+                                <div className="quote-item__actions">
+                                  <button className="btn btn-accent btn-sm" disabled={!!offerBusy} onClick={() => handleOfferAction(o.id, 'accept')} aria-busy={offerBusy === o.id}>
+                                    {t('quotes.accept')}
+                                  </button>
+                                  <button className="btn btn-outline btn-sm" disabled={!!offerBusy} onClick={() => handleOfferAction(o.id, 'reject')}>
+                                    {t('quotes.reject')}
+                                  </button>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* ── Direct Request Quotes ──────────────────────── */}
+                    {directOffers.length > 0 && (
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                          <span style={{ fontSize: '1rem' }}>📨</span>
+                          <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '700', color: 'var(--color-accent, #7c3aed)' }}>
+                            Direct Request Quotes
+                          </h3>
+                          <span className="pill" style={{ fontSize: '0.7rem', background: 'var(--color-accent-light, #ede9fe)', color: 'var(--color-accent, #7c3aed)' }}>
+                            {directOffers.length} quote{directOffers.length !== 1 ? 's' : ''}
+                          </span>
                         </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
+                        <p className="text-muted text-xs" style={{ margin: '-6px 0 10px 0' }}>
+                          You specifically requested quotes from these recyclers. They have responded with a price.
+                        </p>
+                        <ul className="quote-list">
+                          {directOffers.map((o) => {
+                            const offerRate = Number(o.offered_price);
+                            const offerEstTotal = approxWeight > 0 ? Math.round(offerRate * approxWeight) : null;
+                            return (
+                              <li key={o.id} className="quote-item" style={{ borderLeft: '3px solid var(--color-accent, #7c3aed)', paddingLeft: '10px' }}>
+                                <div className="quote-item__main">
+                                  <div className="quote-item__name" style={{ fontWeight: '600' }}>
+                                    🏭 {o.recycler_name}
+                                  </div>
+                                  <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '0.85rem' }}>
+                                    <span><strong style={{ color: 'var(--color-accent, #7c3aed)' }}>₹{offerRate}/kg</strong></span>
+                                    {offerEstTotal && <span className="text-muted">Est. Payout: <strong>{fmt(offerEstTotal)}</strong></span>}
+                                    {o.recycler_facility && <span className="text-muted">📍 {o.recycler_facility}</span>}
+                                    {o.recycler_pickup_availability && <span className="text-muted">🚛 {o.recycler_pickup_availability}</span>}
+                                  </div>
+                                </div>
+                                <div className="quote-item__actions">
+                                  <button className="btn btn-accent btn-sm" disabled={!!offerBusy} onClick={() => handleOfferAction(o.id, 'accept')} aria-busy={offerBusy === o.id}>
+                                    {t('quotes.accept')}
+                                  </button>
+                                  <button className="btn btn-outline btn-sm" disabled={!!offerBusy} onClick={() => handleOfferAction(o.id, 'reject')}>
+                                    {t('quotes.reject')}
+                                  </button>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* ── Pending Invites ────────────────────────────── */}
+                    {pendingInvites.length > 0 && (
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                          <span style={{ fontSize: '1rem' }}>⏳</span>
+                          <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '700', color: 'var(--color-warning, #d97706)' }}>
+                            Awaiting Response
+                          </h3>
+                          <span className="pill" style={{ fontSize: '0.7rem', background: 'var(--color-warning-light)', color: 'var(--color-warning, #d97706)' }}>
+                            {pendingInvites.length} invited
+                          </span>
+                        </div>
+                        <p className="text-muted text-xs" style={{ margin: '-6px 0 10px 0' }}>
+                          You sent a direct quote request to these recyclers. Waiting for them to submit their price.
+                        </p>
+                        <ul className="quote-list">
+                          {pendingInvites.map((o) => (
+                            <li key={o.id} className="quote-item" style={{ borderLeft: '3px solid var(--color-warning, #d97706)', paddingLeft: '10px', opacity: 0.85 }}>
+                              <div className="quote-item__main">
+                                <div className="quote-item__name" style={{ fontWeight: '600' }}>
+                                  🏭 {o.recycler_name}
+                                </div>
+                                <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '0.85rem' }}>
+                                  {o.recycler_facility && <span className="text-muted">📍 {o.recycler_facility}</span>}
+                                  {o.recycler_pickup_availability && <span className="text-muted">🚛 {o.recycler_pickup_availability}</span>}
+                                </div>
+                                <div className="text-muted text-xs" style={{ marginTop: '4px' }}>
+                                  Recycler has been invited but has not submitted a price yet.
+                                </div>
+                              </div>
+                              <div className="quote-item__actions">
+                                <span className="pill" style={{ fontSize: '0.75rem', background: 'var(--color-warning-light)', color: 'var(--color-warning, #d97706)' }}>Pending</span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
             ) : lot?.transaction_status === 'quoted' ? (
               <div>
                 <p className="quote-section__empty">{t('quotes.noQuotesYet')}</p>
