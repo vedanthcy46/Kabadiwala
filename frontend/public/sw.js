@@ -58,11 +58,18 @@ self.addEventListener('activate', (event) => {
 
 // ── Fetch ──────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
-
-  // Only handle GET requests — POST/PUT/DELETE go through normally
   if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  // Never intercept Vite dev server requests or localhost dev files
+  if (
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/node_modules/')
+  ) {
+    return; // Pass through directly to Vite
+  }
 
   // API calls → Network-first, no caching (handled by IndexedDB in app)
   if (url.pathname.startsWith('/v1/')) {
