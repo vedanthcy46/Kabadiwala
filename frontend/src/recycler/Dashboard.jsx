@@ -23,6 +23,7 @@ export default function RecyclerDashboard() {
   const [loadingR, setLoadingR] = useState(true);
   const [newLots, setNewLots] = useState(0);
   const [error, setError] = useState('');
+  const [dismissedBanner, setDismissedBanner] = useState(false);
 
   useEffect(() => {
     const recyclerId = resolveRecyclerId();
@@ -115,10 +116,19 @@ export default function RecyclerDashboard() {
       </div>
 
       {/* New lots callout — freshly-created collector lots matched to this facility */}
-      {newLots > 0 && (
+      {newLots > 0 && !dismissedBanner && (
         <section className="card alert-banner alert-banner--success animate-fade-in" role="status"
-          style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
+          style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
+          
+          <button 
+            onClick={() => setDismissedBanner(true)}
+            style={{ position: 'absolute', top: '8px', right: '8px', background: 'none', border: 'none', fontSize: '1rem', cursor: 'pointer', color: 'var(--color-text-muted)' }}
+            aria-label="Dismiss banner"
+          >
+            ✕
+          </button>
+
+          <div style={{ paddingRight: '20px' }}>
             <p style={{ fontWeight: 'var(--weight-semibold)' }}>{t('recyclerDash.newLotsTitle', { count: newLots })}</p>
             <p className="text-muted" style={{ margin: 0 }}>{t('recyclerDash.newLotsDesc')}</p>
           </div>

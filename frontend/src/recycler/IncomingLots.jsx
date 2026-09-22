@@ -155,7 +155,8 @@ export default function IncomingLots() {
                     {lot.lot_id} · {lot.category}
                   </Link>
                   <div className="quote-item__status">
-                    {t('quotes.weightValue', { weight: lot.approx_weight_kg ?? '—', value: fmt(lot.estimated_value) })}
+                    {lot.approx_weight_kg ?? '—'} kg · est. {fmt(lot.estimated_value)}
+                    {lot.estimated_value && lot.approx_weight_kg ? ` (${fmt(lot.estimated_value / lot.approx_weight_kg)}/kg)` : ''}
                   </div>
                 </div>
 
@@ -212,7 +213,8 @@ export default function IncomingLots() {
                     {lot.lot_id} · {lot.category}
                   </Link>
                   <div className="quote-item__status">
-                    {t('quotes.weightValue', { weight: lot.approx_weight_kg ?? '—', value: fmt(lot.market_estimate) })}
+                    {lot.approx_weight_kg ?? '—'} kg · est. {fmt(lot.market_estimate)}
+                    {lot.market_estimate && lot.approx_weight_kg ? ` (${fmt(lot.market_estimate / lot.approx_weight_kg)}/kg)` : ''}
                     {lot.collection_location ? ` · ${lot.collection_location}` : ''}
                   </div>
                 </div>

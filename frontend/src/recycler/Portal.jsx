@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import { useTranslation } from '../i18n/config.js';
 import RecyclerDashboard from './Dashboard';
 import IncomingLots from './IncomingLots';
@@ -19,9 +19,7 @@ export default function RecyclerPortal() {
 
   // Optional ?section=lots|profile|overview deep-link (used by quick links)
   const initialFromQuery = new URLSearchParams(location.search).get('section');
-  const [tab, setTab] = useState(
-    ['lots', 'profile', 'overview'].includes(initialFromQuery) ? initialFromQuery : 'overview'
-  );
+  const tab = ['lots', 'profile', 'overview'].includes(initialFromQuery) ? initialFromQuery : 'overview';
 
   const TABS = [
     { key: 'overview', label: t('recyclerPortal.overview'), icon: '' },
@@ -29,26 +27,21 @@ export default function RecyclerPortal() {
     { key: 'profile',  label: t('recyclerPortal.profile'), icon: '' },
   ];
 
-  // React to in-page query changes (e.g. after logout → /recycler, or quick links)
-  const queryTab = ['lots', 'profile', 'overview'].includes(initialFromQuery) ? initialFromQuery : null;
-  useEffect(() => {
-    if (queryTab && queryTab !== tab) setTab(queryTab);
-  }, [queryTab]); // eslint-disable-line react-hooks/exhaustive-deps
-
   return (
     <div className="portal">
       <nav className="portal-tabs" role="tablist" aria-label={t('recyclerPortal.nav')}>
         {TABS.map((item) => (
-          <button
+          <Link
             key={item.key}
+            to={`/recycler?section=${item.key}`}
             role="tab"
             aria-selected={tab === item.key}
             className={`portal-tab ${tab === item.key ? 'portal-tab--active' : ''}`}
-            onClick={() => setTab(item.key)}
+            style={{ textDecoration: 'none' }}
           >
             <span aria-hidden="true">{item.icon}</span>
             {item.label}
-          </button>
+          </Link>
         ))}
       </nav>
 

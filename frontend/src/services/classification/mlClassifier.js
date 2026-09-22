@@ -11,7 +11,7 @@
 import { isOnline } from '../offline/offlineUtils.js';
 
 let modelInstance = null;
-let isLoading = false;
+let modelLoadPromise = null;
 
 // ── E-Waste category mapping from generic ImageNet class names ──────────────
 const CATEGORY_MAP = {
@@ -52,31 +52,35 @@ const DEMO_CATEGORIES = ['CRT', 'LCD', 'PCB', 'Cable', 'Battery', 'Motor', 'Plas
  */
 async function tryLoadModel() {
   if (modelInstance) return modelInstance;
-  if (isLoading) return null; // Prevent concurrent fetch floods
   if (!isOnline()) return null;
 
-  isLoading = true;
-  try {
-    const [tf, mobilenet] = await Promise.all([
-      import('@tensorflow/tfjs'),
-      import('@tensorflow-models/mobilenet'),
-    ]);
-    await tf.ready();
+  if (modelLoadPromise) return modelLoadPromise;
 
-    const loadPromise = mobilenet.load({ version: 2, alpha: 0.5 });
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Model load timeout')), 12000)
-    );
-    modelInstance = await Promise.race([loadPromise, timeout]);
-    console.log('[ML] TensorFlow model loaded successfully');
-    return modelInstance;
-  } catch (err) {
-    console.warn('[ML] TensorFlow model failed to load — will use heuristic:', err.message);
-    modelInstance = null;
-    return null;
-  } finally {
-    isLoading = false;
-  }
+  modelLoadPromise = (async () => {
+    try {
+      const [tf, mobilenet] = await Promise.all([
+        import('@tensorflow/tfjs'),
+        import('@tensorflow-models/mobilenet'),
+      ]);
+      await tf.ready();
+
+      const loadPromise = mobilenet.load({ version: 2, alpha: 0.5 });
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Model load timeout')), 30000)
+      );
+      modelInstance = await Promise.race([loadPromise, timeout]);
+      console.log('[ML] TensorFlow model loaded successfully');
+      return modelInstance;
+    } catch (err) {
+      console.warn('[ML] TensorFlow model failed to load — will use heuristic:', err.message);
+      modelInstance = null;
+      return null;
+    } finally {
+      modelLoadPromise = null;
+    }
+  })();
+
+  return modelLoadPromise;
 }
 
 /**
@@ -154,7 +158,7 @@ async function runTFJS(imageElement) {
       verdict,
       reason: verdict === 'low'
         ? `Low confidence (${Math.round(top.confidence * 100)}%). Please verify.`
-        : `AI detected ${top.category} with ${Math.round(top.confidence * 100)}% confidence.`,
+        : `AI analyzed visual properties. Detected ${top.category} with ${Math.round(top.confidence * 100)}% confidence.`,
       candidates: results.slice(0, 3),
       features: {},
       modelVersion: 'MobileNetV2 (TFJS)',
@@ -190,10 +194,10 @@ export async function classifyFile(file) {
       });
     })();
 
-    // Race: if TFJS doesn't finish in 8s, use heuristic
+    // Race: if TFJS doesn't finish in 35s, use heuristic (allowing time for model download)
     const raceResult = await Promise.race([
       tfjsPromise,
-      new Promise(resolve => setTimeout(() => resolve(null), 8000)),
+      new Promise(resolve => setTimeout(() => resolve(null), 35000)),
     ]);
 
     if (raceResult) return raceResult;

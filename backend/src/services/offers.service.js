@@ -464,12 +464,22 @@ export const getOffersByLot = async (lotId) => {
                        row.transaction_status === 'handed_over' ||
                        row.transaction_status === 'confirmed';
 
+    // An offer is "direct" if the collector explicitly invited this recycler
+    // (the offer started with status='requested' meaning collector initiated it).
+    // Open market offers skip 'requested' and go straight to 'offered' via sendOffer().
+    // We detect this by checking if responded_at is set (recycler priced it) but
+    // there's no prior 'requested' step — i.e. the first status was already 'offered'.
+    // Simplest reliable heuristic: if offer was ever 'requested', collector started it.
+    // We pass collector_id: if it matches the lot's collector, it was direct.
+    const isDirectRequest = row.offer_status === 'requested';
+
     return {
       ...row,
       contact_unlocked: isUnlocked,
       contact_details: isUnlocked ? row.recycler_contact_details : null,
       recycler_phone: isUnlocked ? row.recycler_contact_details : null,
       pickup_availability: row.recycler_pickup_availability || 'On Request',
+      is_direct_request: isDirectRequest,
     };
   });
 };

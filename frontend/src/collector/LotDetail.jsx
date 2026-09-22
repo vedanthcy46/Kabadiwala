@@ -93,7 +93,8 @@ export default function CollectorLotDetail() {
 
   const latestHandover = handovers[0] ?? null;
   const acceptedOffer = offers.find(o => o.offer_status === 'accepted') ?? null;
-  const openOffers = offers.filter(o => o.offer_status === 'offered');
+  // Show all active offers: 'offered' = recycler has priced, 'requested' = invited but not yet priced
+  const openOffers = offers.filter(o => o.offer_status === 'offered' || o.offer_status === 'requested');
   const collectionImages = lotImages.filter((image) => image.image_type === 'COLLECTION');
   const confirmationImages = lotImages.filter((image) => image.image_type === 'RECYCLER_CONFIRMATION');
 
@@ -712,39 +713,67 @@ export default function CollectorLotDetail() {
                 </div>
                 <ul className="quote-list">
                   {openOffers.map((o) => {
-                    const offerRate = Number(o.offered_price);
-                    const offerEstTotal = approxWeight > 0
+                    const isPriced = o.offer_status === 'offered';
+                    const offerRate = isPriced ? Number(o.offered_price) : null;
+                    const offerEstTotal = isPriced && approxWeight > 0
                       ? Math.round(offerRate * approxWeight)
                       : null;
+                    // 'requested' means collector invited recycler directly; 'offered' can be either
+                    // direct or open-market (recycler proactively quoted from the open pool)
+                    const isOpenMarket = isPriced && !o.is_direct_request;
                     return (
                       <li key={o.id} className="quote-item">
                         <div className="quote-item__main">
-                          <div className="quote-item__name">{o.recycler_name}</div>
-                          <div className="quote-item__status">
-                            <strong>₹{offerRate} / kg</strong> Recycler Offer
-                            {offerEstTotal && (
-                              <span className="text-muted text-xs" style={{ display: 'block' }}>
-                                Est. Payout: {fmt(offerEstTotal)}
+                          <div className="quote-item__name">
+                            {o.recycler_name}
+                            {isOpenMarket && (
+                              <span className="pill" style={{ marginLeft: '6px', fontSize: '0.7rem', background: 'var(--color-primary-light)', color: 'var(--color-primary)' }}>
+                                Open Market
                               </span>
+                            )}
+                            {!isPriced && (
+                              <span className="pill" style={{ marginLeft: '6px', fontSize: '0.7rem', background: 'var(--color-warning-light)', color: 'var(--color-warning)' }}>
+                                Awaiting Quote
+                              </span>
+                            )}
+                          </div>
+                          <div className="quote-item__status">
+                            {isPriced ? (
+                              <>
+                                <strong>₹{offerRate} / kg</strong>
+                                {offerEstTotal && (
+                                  <span className="text-muted text-xs" style={{ display: 'block' }}>
+                                    Est. Payout: {fmt(offerEstTotal)}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-muted text-xs">Recycler invited — price not submitted yet</span>
                             )}
                           </div>
                         </div>
                         <div className="quote-item__actions">
-                          <button
-                            className="btn btn-accent btn-sm"
-                            disabled={!!offerBusy}
-                            onClick={() => handleOfferAction(o.id, 'accept')}
-                            aria-busy={offerBusy === o.id}
-                          >
-                            {t('quotes.accept')}
-                          </button>
-                          <button
-                            className="btn btn-outline btn-sm"
-                            disabled={!!offerBusy}
-                            onClick={() => handleOfferAction(o.id, 'reject')}
-                          >
-                            {t('quotes.reject')}
-                          </button>
+                          {isPriced ? (
+                            <>
+                              <button
+                                className="btn btn-accent btn-sm"
+                                disabled={!!offerBusy}
+                                onClick={() => handleOfferAction(o.id, 'accept')}
+                                aria-busy={offerBusy === o.id}
+                              >
+                                {t('quotes.accept')}
+                              </button>
+                              <button
+                                className="btn btn-outline btn-sm"
+                                disabled={!!offerBusy}
+                                onClick={() => handleOfferAction(o.id, 'reject')}
+                              >
+                                {t('quotes.reject')}
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-muted text-xs">Pending</span>
+                          )}
                         </div>
                       </li>
                     );

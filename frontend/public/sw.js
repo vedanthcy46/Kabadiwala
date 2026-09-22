@@ -11,7 +11,7 @@
  * so the old cache is cleaned up automatically.
  */
 
-const CACHE_VERSION = 'v4-offline-ml-hash';
+const CACHE_VERSION = 'v5-offline-ml-fix';
 const CACHE_NAME = `esetu-shell-${CACHE_VERSION}`;
 
 // Assets to pre-cache on install (app shell)

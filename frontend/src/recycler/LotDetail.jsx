@@ -12,6 +12,43 @@ import MapLink from '../components/MapLink';
 import { PageLoader, LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
 import './LotDetail.css';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+const defaultIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+});
+
+function LocationPickerMarker({ lat, lng, onLocationChange }) {
+  const map = useMapEvents({
+    click(e) {
+      onLocationChange(e.latlng.lat, e.latlng.lng);
+      map.flyTo(e.latlng, map.getZoom());
+    },
+  });
+
+  return (
+    <Marker 
+      position={[lat, lng]} 
+      icon={defaultIcon}
+      draggable={true}
+      eventHandlers={{
+        dragend: (e) => {
+          const marker = e.target;
+          const position = marker.getLatLng();
+          onLocationChange(position.lat, position.lng);
+        },
+      }}
+    />
+  );
+}
 
 function fmtDate(d, lang) {
   if (!d) return '—';
@@ -547,13 +584,36 @@ export default function LotDetail() {
                 <button type="button" className="btn btn-outline" onClick={captureGps} disabled={gpsState === 'locating'}>
                   {gpsState === 'locating' ? 'Capturing location…' : gpsState === 'ok' ? 'Location captured' : 'Capture pickup location'}
                 </button>
-{gpsState === 'ok' && (
-                  <span className="verify-gps-ok"><MapLink lat={gps.lat} lng={gps.lng} /></span>
-                )}
                 {gpsState === 'unavailable' && (
                   <span className="text-muted text-sm">Location is required to begin pickup. Enable location access and try again.</span>
                 )}
               </div>
+              {gpsState === 'ok' && gps && (
+                <div style={{ marginTop: 'var(--space-3)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--color-success, #16a34a)', marginBottom: 'var(--space-2)' }}>
+                    <span>📍</span>
+                    <span className="font-mono">Coordinates: {gps.lat.toFixed(6)}, {gps.lng.toFixed(6)}</span>
+                  </div>
+                  <div style={{ height: '200px', borderRadius: 'var(--radius-md, 8px)', overflow: 'hidden', border: '1px solid var(--color-border, #e2e8f0)', position: 'relative', zIndex: 0 }}>
+                    <MapContainer center={[gps.lat, gps.lng]} zoom={15} style={{ height: '100%', width: '100%' }}>
+                      <TileLayer
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                      />
+                      <LocationPickerMarker 
+                        lat={gps.lat} 
+                        lng={gps.lng} 
+                        onLocationChange={(lat, lng) => setGps({ lat, lng })} 
+                      />
+                    </MapContainer>
+                    <div style={{ position: 'absolute', bottom: '8px', left: '0', right: '0', textAlign: 'center', zIndex: 400, pointerEvents: 'none' }}>
+                      <span style={{ background: 'rgba(255,255,255,0.9)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '500', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                        Drag pin or tap map to adjust precise location
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
               <button
                 className="btn btn-accent btn-full"
                 style={{ marginTop: 'var(--space-4)' }}
@@ -966,15 +1026,36 @@ export default function LotDetail() {
                   <button type="button" className="btn btn-outline" onClick={captureGps} disabled={gpsState === 'locating'}>
                     {gpsState === 'locating' ? t('verify.gpsLocating') : t('verify.gpsCapture')}
                   </button>
-                  {gpsState === 'ok' && (
-                    <span className="verify-gps-ok">
-                       {t('verify.gpsRecorded')} <MapLink lat={gps.lat} lng={gps.lng} />
-                    </span>
-                  )}
                   {gpsState === 'unavailable' && (
                     <span className="text-muted text-sm">{t('verify.gpsUnavailable')}</span>
                   )}
                 </div>
+                {gpsState === 'ok' && gps && (
+                  <div style={{ marginTop: 'var(--space-3)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--color-success, #16a34a)', marginBottom: 'var(--space-2)' }}>
+                      <span>📍</span>
+                      <span className="font-mono">{t('verify.gpsRecorded')} {gps.lat.toFixed(6)}, {gps.lng.toFixed(6)}</span>
+                    </div>
+                    <div style={{ height: '200px', borderRadius: 'var(--radius-md, 8px)', overflow: 'hidden', border: '1px solid var(--color-border, #e2e8f0)', position: 'relative', zIndex: 0 }}>
+                      <MapContainer center={[gps.lat, gps.lng]} zoom={15} style={{ height: '100%', width: '100%' }}>
+                        <TileLayer
+                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                        />
+                        <LocationPickerMarker 
+                          lat={gps.lat} 
+                          lng={gps.lng} 
+                          onLocationChange={(lat, lng) => setGps({ lat, lng })} 
+                        />
+                      </MapContainer>
+                      <div style={{ position: 'absolute', bottom: '8px', left: '0', right: '0', textAlign: 'center', zIndex: 400, pointerEvents: 'none' }}>
+                        <span style={{ background: 'rgba(255,255,255,0.9)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '500', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                          Drag pin or tap map to adjust precise location
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <p className="text-muted text-sm" style={{ margin: 'var(--space-3) 0', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
