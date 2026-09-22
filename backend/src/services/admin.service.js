@@ -249,156 +249,63 @@ export const listAuditEvents = async () => {
 };
 
 /**
- * E-waste TRANSACTION heatmap — each point is a real transaction plotted at
- * its collection GPS coordinate (where the collector picked up the material),
- * weighted by quantity_weight_kg so high-volume hotspots glow brighter.
- * Falls back to the traceability GPS, then a city centroid when GPS is unavailable.
+ * Geospatial distribution of recyclers, authorization status, and transactions for location heatmap.
  */
 export const adminHeatmapData = async () => {
-  const CITY_CENTROIDS = {
-    'Peenya':          { lat: 13.0329, lng: 77.5273 },
-    'Whitefield':      { lat: 12.9698, lng: 77.7499 },
-    'Electronic City': { lat: 12.8452, lng: 77.6602 },
-    'Bengaluru':       { lat: 12.9716, lng: 77.5946 },
-    'Bangalore':       { lat: 12.9716, lng: 77.5946 },
-    'Mumbai':          { lat: 19.0760, lng: 72.8777 },
-    'Dharavi':         { lat: 19.0434, lng: 72.8567 },
-    'Delhi':           { lat: 28.6139, lng: 77.2090 },
-    'Seelampur':       { lat: 28.6692, lng: 77.2713 },
-    'Chennai':         { lat: 13.0827, lng: 80.2707 },
-    'Hyderabad':       { lat: 17.3850, lng: 78.4867 },
-    'Kolkata':         { lat: 22.5726, lng: 88.3639 },
-    'Pune':            { lat: 18.5204, lng: 73.8567 },
-    'Ahmedabad':       { lat: 23.0225, lng: 72.5714 },
-    'Jaipur':          { lat: 26.9124, lng: 75.7873 },
-    'Surat':           { lat: 21.1702, lng: 72.8311 },
-    'Lucknow':         { lat: 26.8467, lng: 80.9462 },
-  };
-
-  const [txnRes, categoryRes, regionalRes] = await Promise.all([
-    // ── Main transaction points ───────────────────────────────────────────
-    // GPS priority: lot collection_lat/lng → traceability gps_lat/gps_lng → collector city centroid
-    query(`
-      SELECT
-        t.id                                          AS txn_id,
-        t.quantity_weight_kg,
-        t.transaction_status                          AS status,
-        t.payment_method,
-        t.txn_datetime                                AS created_at,
-        t.collection_lat,
-        t.collection_lng,
-        t.handover_lat,
-        t.handover_lng,
-        m.category,
-        m.sub_category,
-        m.collection_lat                              AS lot_lat,
-        m.collection_lng                              AS lot_lng,
-        tr.gps_lat                                    AS trace_lat,
-        tr.gps_lng                                    AS trace_lng,
-        c.operating_location                          AS collector_location,
-        c.name                                        AS collector_name,
-        r.name                                        AS recycler_name,
-        r.service_area
-      FROM transactions t
-      JOIN materials m  ON m.lot_id    = t.lot_id
-      JOIN collectors c ON c.id        = t.collector_id
-      LEFT JOIN recyclers r   ON r.id  = t.recycler_id
-      LEFT JOIN traceability tr ON tr.lot_id = t.lot_id
-      ORDER BY t.txn_datetime DESC
-      LIMIT 2000
-    `),
-
-    // ── Category volume breakdown ─────────────────────────────────────────
-    query(`
-      SELECT
-        m.category,
-        COUNT(t.id)::int                               AS txn_count,
-        COALESCE(SUM(t.quantity_weight_kg), 0)::numeric AS total_kg
-      FROM transactions t
-      JOIN materials m ON m.lot_id = t.lot_id
-      GROUP BY m.category
-      ORDER BY total_kg DESC
-    `),
-
-    // ── Regional summary (by collector operating_location) ────────────────
-    query(`
-      SELECT
-        COALESCE(c.operating_location, r.service_area, 'Unknown')  AS city,
-        COUNT(t.id)::int                                            AS txn_count,
-        COALESCE(SUM(t.quantity_weight_kg), 0)::numeric             AS total_kg,
-        COUNT(t.id) FILTER (WHERE t.transaction_status = 'confirmed')::int AS completed_count
-      FROM transactions t
-      JOIN collectors c   ON c.id = t.collector_id
-      LEFT JOIN recyclers r ON r.id = t.recycler_id
-      GROUP BY COALESCE(c.operating_location, r.service_area, 'Unknown')
-      ORDER BY total_kg DESC
-      LIMIT 20
-    `),
+  const [pointsRes, regionalRes] = await Promise.all([
+    query(
+      `SELECT
+         r.id,
+         r.name,
+         r.facility_location,
+         r.latitude,
+         r.longitude,
+         r.authorization_status,
+         r.service_area,
+         r.materials_accepted,
+         COUNT(t.id)::int AS txn_count,
+         COALESCE(SUM(t.quantity_weight_kg), 0)::numeric AS total_kg
+       FROM recyclers r
+       LEFT JOIN transactions t ON t.recycler_id = r.id
+       WHERE r.latitude IS NOT NULL AND r.longitude IS NOT NULL
+       GROUP BY r.id, r.name, r.facility_location, r.latitude, r.longitude, r.authorization_status, r.service_area, r.materials_accepted
+       ORDER BY r.id ASC`
+    ),
+    query(
+      `SELECT
+         COALESCE(service_area, 'Other') AS state,
+         COUNT(*)::int AS recycler_count,
+         COUNT(*) FILTER (WHERE authorization_status = 'authorized')::int AS authorized_count,
+         COUNT(*) FILTER (WHERE authorization_status = 'pending')::int AS pending_count,
+         COUNT(*) FILTER (WHERE authorization_status = 'unauthorized')::int AS unauthorized_count
+       FROM recyclers
+       WHERE latitude IS NOT NULL
+       GROUP BY service_area
+       ORDER BY recycler_count DESC`
+    ),
   ]);
 
-  // ── Build heatmap points ──────────────────────────────────────────────────
-  const MAX_KG = Math.max(...txnRes.rows.map((r) => Number(r.quantity_weight_kg || 1)), 1);
-
-  const points = txnRes.rows
-    .map((row) => {
-      // GPS priority: transaction GPS → lot GPS → traceability GPS → city centroid
-      let lat = Number(row.collection_lat) || Number(row.lot_lat) || Number(row.trace_lat) || null;
-      let lng = Number(row.collection_lng) || Number(row.lot_lng) || Number(row.trace_lng) || null;
-      let gpsSource = 'centroid';
-
-      if (lat && lng) {
-        gpsSource = 'gps';
-      } else {
-        // Try to match city from operating_location or service_area text
-        const locationText = (row.collector_location || row.service_area || '').trim();
-        const cityKey = Object.keys(CITY_CENTROIDS).find((k) =>
-          locationText.toLowerCase().includes(k.toLowerCase())
-        );
-        const centroid = cityKey ? CITY_CENTROIDS[cityKey] : null;
-        if (!centroid) return null; // drop point entirely if no location resolvable
-
-        // Small random jitter so stacked centroid points spread slightly
-        lat = centroid.lat + (Math.random() - 0.5) * 0.09;
-        lng = centroid.lng + (Math.random() - 0.5) * 0.09;
-      }
-
-      const kg = Number(row.quantity_weight_kg) || 1;
-      const intensity = Math.min(1.0, +(0.2 + (kg / MAX_KG) * 0.8).toFixed(3));
-
-      return {
-        id:            row.txn_id,
-        lat,
-        lng,
-        intensity,
-        weightKg:      kg,
-        category:      row.category      || 'Unknown',
-        subCategory:   row.sub_category  || '',
-        status:        row.status        || 'quoted',
-        paymentMethod: row.payment_method,
-        collectorName: row.collector_name,
-        recyclerName:  row.recycler_name,
-        city:          row.collector_location || row.service_area || 'Unknown',
-        createdAt:     row.created_at,
-        gpsSource,
-      };
-    })
-    .filter(Boolean);
+  const points = pointsRes.rows.map((row) => {
+    const base = row.authorization_status === 'authorized' ? 0.6 : (row.authorization_status === 'pending' ? 0.35 : 0.2);
+    const activityBonus = Math.min(0.4, (row.txn_count || 0) * 0.1);
+    return {
+      id: row.id,
+      name: row.name,
+      facilityLocation: row.facility_location,
+      lat: Number(row.latitude),
+      lng: Number(row.longitude),
+      status: row.authorization_status,
+      serviceArea: row.service_area,
+      materialsAccepted: row.materials_accepted,
+      txnCount: row.txn_count,
+      totalKg: Number(row.total_kg),
+      intensity: Math.min(1.0, +(base + activityBonus).toFixed(2)),
+    };
+  });
 
   return {
-    totalPoints:      points.length,
+    totalPoints: points.length,
     points,
-    categoryBreakdown: categoryRes.rows.map((r) => ({
-      category: r.category,
-      txnCount: r.txn_count,
-      totalKg:  Number(r.total_kg),
-    })),
-    regionalSummary: regionalRes.rows.map((r) => ({
-      city:           r.city,
-      txnCount:       r.txn_count,
-      totalKg:        Number(r.total_kg),
-      completedCount: r.completed_count,
-    })),
+    regionalSummary: regionalRes.rows,
   };
 };
-
-
