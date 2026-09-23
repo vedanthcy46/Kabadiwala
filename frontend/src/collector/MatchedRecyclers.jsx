@@ -11,6 +11,7 @@ import { PageLoader, LoadingSpinner } from '../components/LoadingSpinner';
 import MapLink from '../components/MapLink';
 import RecyclersMap from './RecyclersMap';
 import { useTranslation } from '../i18n/config.js';
+import PickupBadge from '../components/PickupBadge';
 import './MatchedRecyclers.css';
 
 export default function MatchedRecyclers() {
@@ -449,7 +450,9 @@ export default function MatchedRecyclers() {
                       </div>
                       <div>
                         <span className="detail-item__label" style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Pickup Availability</span>
-                        <p style={{ margin: '2px 0 0 0' }}>{acceptedOffer.pickup_availability || 'Daily / On Request'}</p>
+                        <div style={{ marginTop: '4px' }}>
+                          <PickupBadge value={acceptedOffer.pickup_availability} />
+                        </div>
                       </div>
                       <div>
                         <span className="detail-item__label" style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Facility Location</span>
@@ -664,12 +667,10 @@ export default function MatchedRecyclers() {
                     </div>
                   </div>
                   <div className="recycler-stat">
-                    <span className="recycler-stat__icon" aria-hidden="true">✓</span>
+                    <span className="recycler-stat__icon" aria-hidden="true">🚛</span>
                     <div>
                       <p className="recycler-stat__label">{t('recyclers.pickup')}</p>
-                      <p className={`recycler-stat__value ${r.pickup_availability === 'daily' ? 'text-success' : 'text-muted'}`}>
-                        {r.pickup_availability === 'daily' ? t('recyclers.pickupYes') : t('recyclers.pickupNo')}
-                      </p>
+                      <PickupBadge value={r.pickup_availability} compact />
                     </div>
                   </div>
                 </div>

@@ -25,8 +25,10 @@ function navFor(role, t) {
     { to: '/collector/create-lot', label: t('nav.createLot'), icon: '+' },
     { to: '/collector/prices', label: t('nav.prices'), icon: '₹' },
     { to: '/collector/earnings', label: t('nav.earnings'), icon: '' },
+    { to: '/collector/profile', label: 'My Profile', icon: '👤' },
     { to: '/safety', label: t('nav.safety'), icon: '' },
   ];
+
 }
 
 export function Navbar() {

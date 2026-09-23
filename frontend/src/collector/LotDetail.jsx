@@ -18,6 +18,7 @@ import LotQR from '../components/LotQR';
 import MapLink from '../components/MapLink';
 import { PageLoader } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
+import PickupBadge from '../components/PickupBadge';
 import './LotDetail.css';
 
 function fmtDate(d) {
@@ -700,7 +701,9 @@ export default function CollectorLotDetail() {
                     </div>
                     <div>
                       <span className="detail-item__label" style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Pickup Availability</span>
-                      <p style={{ margin: '2px 0 0 0' }}>{acceptedOffer.pickup_availability || 'Daily / On Request'}</p>
+                      <div style={{ marginTop: '4px' }}>
+                        <PickupBadge value={acceptedOffer.pickup_availability} />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -747,7 +750,7 @@ export default function CollectorLotDetail() {
                                     <span><strong style={{ color: 'var(--color-primary)' }}>₹{offerRate}/kg</strong></span>
                                     {offerEstTotal && <span className="text-muted">Est. Payout: <strong>{fmt(offerEstTotal)}</strong></span>}
                                     {o.recycler_facility && <span className="text-muted">📍 {o.recycler_facility}</span>}
-                                    {o.recycler_pickup_availability && <span className="text-muted">🚛 {o.recycler_pickup_availability}</span>}
+                                    <PickupBadge value={o.recycler_pickup_availability} compact />
                                   </div>
                                 </div>
                                 <div className="quote-item__actions">
@@ -794,7 +797,7 @@ export default function CollectorLotDetail() {
                                     <span><strong style={{ color: 'var(--color-accent, #7c3aed)' }}>₹{offerRate}/kg</strong></span>
                                     {offerEstTotal && <span className="text-muted">Est. Payout: <strong>{fmt(offerEstTotal)}</strong></span>}
                                     {o.recycler_facility && <span className="text-muted">📍 {o.recycler_facility}</span>}
-                                    {o.recycler_pickup_availability && <span className="text-muted">🚛 {o.recycler_pickup_availability}</span>}
+                                    <PickupBadge value={o.recycler_pickup_availability} compact />
                                   </div>
                                 </div>
                                 <div className="quote-item__actions">
@@ -836,7 +839,7 @@ export default function CollectorLotDetail() {
                                 </div>
                                 <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '0.85rem' }}>
                                   {o.recycler_facility && <span className="text-muted">📍 {o.recycler_facility}</span>}
-                                  {o.recycler_pickup_availability && <span className="text-muted">🚛 {o.recycler_pickup_availability}</span>}
+                                  <PickupBadge value={o.recycler_pickup_availability} compact />
                                 </div>
                                 <div className="text-muted text-xs" style={{ marginTop: '4px' }}>
                                   Recycler has been invited but has not submitted a price yet.

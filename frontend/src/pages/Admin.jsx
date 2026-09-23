@@ -519,12 +519,9 @@ export default function Admin() {
   // ── Dashboard ─────────────────────────────────────────────────────────────
   return (
     <div className="container">
-      <div className="animate-fade-in" style={{ marginBottom: 'var(--space-6)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-        <div>
-          <h1 className="section-title">{t('admin.title')}</h1>
-          <p className="section-subtitle">{t('admin.subtitle')}</p>
-        </div>
-        <button className="btn btn-ghost btn-sm" onClick={handleLogout}>{t('login.logout')}</button>
+      <div className="animate-fade-in" style={{ marginBottom: 'var(--space-6)' }}>
+        <h1 className="section-title">{t('admin.title')}</h1>
+        <p className="section-subtitle">{t('admin.subtitle')}</p>
       </div>
 
       {/* Tabs */}

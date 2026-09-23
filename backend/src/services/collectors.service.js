@@ -101,3 +101,46 @@ export const loginCollector = async (phone) => {
     token: `mock-login-${collector.id}-${Date.now()}`,
   };
 };
+
+export const getCollector = async (id) => {
+  await ensureCollectorCoordinateColumns();
+  const result = await query(
+    `SELECT id, name, phone, preferred_language, operating_location, latitude, longitude, created_at
+     FROM collectors WHERE id = $1`,
+    [id]
+  );
+  if (result.rows.length === 0) throw new ApiError(404, 'Collector not found');
+  return result.rows[0];
+};
+
+export const updateCollector = async (id, data) => {
+  await ensureCollectorCoordinateColumns();
+  const { name, phone, operating_location, preferred_language, latitude, longitude } = data;
+
+  let finalLat = latitude ?? null;
+  let finalLng = longitude ?? null;
+
+  if ((finalLat == null || finalLng == null) && operating_location) {
+    try {
+      const { resolveLocationCoords } = await import('./location.service.js');
+      const resolved = await resolveLocationCoords(operating_location);
+      finalLat = resolved.lat;
+      finalLng = resolved.lng;
+    } catch {}
+  }
+
+  const result = await query(
+    `UPDATE collectors
+     SET name = COALESCE($1, name),
+         phone = COALESCE($2, phone),
+         operating_location = COALESCE($3, operating_location),
+         preferred_language = COALESCE($4, preferred_language),
+         latitude  = COALESCE($5, latitude),
+         longitude = COALESCE($6, longitude)
+     WHERE id = $7
+     RETURNING id, name, phone, preferred_language, operating_location, latitude, longitude, created_at`,
+    [name ?? null, phone ?? null, operating_location ?? null, preferred_language ?? null, finalLat, finalLng, id]
+  );
+  if (result.rows.length === 0) throw new ApiError(404, 'Collector not found');
+  return result.rows[0];
+};

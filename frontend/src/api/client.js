@@ -446,6 +446,12 @@ export const checkTransactionAnomaly = (payload) =>
 export const loginCollector = (phone) =>
   request('/collectors/login', { method: 'POST', body: JSON.stringify({ phone }) });
 
+// GET /v1/collectors/:id → collector profile
+export const getCollector = (id) => request(`/collectors/${id}`);
+// PATCH /v1/collectors/:id → update collector profile
+export const updateCollector = (id, data) =>
+  request(`/collectors/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
 // POST /v1/recyclers/login { recycler_id } → { data: { recycler, token } }
 export const loginRecycler = (recyclerId) =>
   request('/recyclers/login', { method: 'POST', body: JSON.stringify({ recycler_id: recyclerId }) });

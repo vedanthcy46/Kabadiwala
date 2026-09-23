@@ -5,6 +5,7 @@ import { resolveRecyclerId } from '../services/auth';
 import { StatusBadge } from '../components/StatusBadge';
 import { PageLoader, LoadingSpinner } from '../components/LoadingSpinner';
 import { useTranslation } from '../i18n/config.js';
+import PickupBadge from '../components/PickupBadge';
 import './Profile.css';
 
 export default function RecyclerProfile() {
@@ -513,22 +514,50 @@ export default function RecyclerProfile() {
 
             <div className="form-group">
               <label className="form-label">{t('recyclerDash.pickupAvailable')}</label>
+              <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                This setting tells collectors how frequently you can arrange pickup. It directly affects how your facility is ranked in lot matching.
+              </p>
               {editing ? (
-                <div className="toggle-wrap">
-                  <button
-                    className={`toggle-btn ${form?.pickup_availability === 'daily' ? 'toggle-btn--on' : ''}`}
-                    onClick={() => handleField('pickup_availability', form?.pickup_availability === 'daily' ? 'on_request' : 'daily')}
-                    aria-pressed={form?.pickup_availability === 'daily'}
-                    type="button"
-                  >
-                    <span className="toggle-thumb" />
-                  </button>
-                  <span>{form?.pickup_availability === 'daily' ? t('recyclerDash.pickupYes') : t('recyclerDash.pickupNo')}</span>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  {[
+                    { value: 'daily',      icon: '🟢', label: 'Daily Pickup',        hint: 'You can pick up lots every day' },
+                    { value: 'weekly',     icon: '🟡', label: 'Weekly Pickup',       hint: 'You arrange pickup once a week' },
+                    { value: 'on_request', icon: '🔴', label: 'On Request Only',     hint: 'Collector must drop off at facility' },
+                  ].map(({ value, icon, label, hint }) => {
+                    const selected = form?.pickup_availability === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => handleField('pickup_availability', value)}
+                        aria-pressed={selected}
+                        style={{
+                          flex: '1 1 140px',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: selected ? '2px solid var(--color-primary)' : '1.5px solid var(--color-border)',
+                          background: selected ? 'var(--color-primary-light, #eff6ff)' : 'var(--color-surface-alt)',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          outline: 'none',
+                        }}
+                      >
+                        <div style={{ fontSize: '1.1rem', marginBottom: '3px' }}>{icon}</div>
+                        <div style={{ fontWeight: selected ? '700' : '600', fontSize: '0.85rem', color: selected ? 'var(--color-primary)' : 'var(--color-text-primary)' }}>
+                          {label}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                          {hint}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
-                <p className="profile-value">
-                  {recycler?.pickup_availability === 'daily' ? ` ${t('recyclerDash.pickupYes')}` : ` ${t('recyclerDash.pickupNo')}`}
-                </p>
+                <div style={{ marginTop: '4px' }}>
+                  <PickupBadge value={recycler?.pickup_availability} />
+                </div>
               )}
             </div>
           </div>

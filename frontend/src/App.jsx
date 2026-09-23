@@ -16,6 +16,8 @@ import PriceDiscovery from './collector/PriceDiscovery';
 import CollectorLotDetail from './collector/LotDetail';
 import CollectorTraceability from './collector/Traceability';
 import EarningsLedger from './collector/Earnings';
+import CollectorProfile from './collector/Profile';
+
 
 // Recycler pages
 import RecyclerPortal from './recycler/Portal';
@@ -104,6 +106,10 @@ function AppInner() {
           <Route path="/collector/lots/:lotId/trace" element={
             <ProtectedRoute role="collector"><CollectorTraceability /></ProtectedRoute>
           } />
+          <Route path="/collector/profile" element={
+            <ProtectedRoute role="collector"><CollectorProfile /></ProtectedRoute>
+          } />
+
 
           {/* Recycler routes */}
           <Route path="/recycler" element={

@@ -5,10 +5,9 @@ import { loginCollectorSchema, registerCollectorSchema } from '../../validations
 
 const router = express.Router();
 
-// Collector registration — create an account (phone/name/area/language)
 router.post('/register', validate(registerCollectorSchema), collectorsController.register);
-
-// Collector login — phone-number based for the demo
 router.post('/login', validate(loginCollectorSchema), collectorsController.login);
+router.get('/:id', collectorsController.getProfile);
+router.patch('/:id', collectorsController.updateProfile);
 
 export default router;
