@@ -1092,39 +1092,51 @@ export default function Admin() {
                   </tr>
                 </thead>
                 <tbody>
-                  {anomalies.map((a) => (
-                    <tr key={a.id}>
-                      <td>{fmtDate(a.txn_datetime)}</td>
-                      <td className="font-mono">{a.lot_id}</td>
-                      <td><span className="admin-table__name">{a.material_category}</span></td>
-                      <td>{a.quantity_weight_kg} kg</td>
-                      <td>₹{Number(a.final_price).toLocaleString('en-IN')}</td>
-                      <td className="font-mono">
-                        ₹{a.unit_price}/kg
-                        <span className="admin-table__sub">
-                          {Number(a.sample_count || 0) >= 5 ? `Hist Avg: ₹${a.avg_unit_price}/kg` : `Mkt Bench: ₹${a.avg_unit_price}/kg`}
-                        </span>
-                      </td>
-                      <td className="font-mono" style={{ fontWeight: '600', color: Math.abs(Number(a.z_score)) > 2 ? 'var(--color-error, #dc2626)' : 'inherit' }}>
-                        {a.z_score != null ? `${Number(a.z_score) > 0 ? '+' : ''}${a.z_score}σ` : '—'}
-                      </td>
-                      <td>
-                        <span className={`dataset-outcome dataset-outcome--${a.severity === 'high' ? 'dismissed' : 'corrected'}`} style={{ color: a.severity === 'high' ? 'var(--color-error, #dc2626)' : 'var(--color-warning, #b45309)' }}>
-                          {a.severity?.toUpperCase()}
-                        </span>
-                      </td>
-                      <td style={{ minWidth: '280px' }}>
-                        <div style={{ fontSize: '0.85rem', lineHeight: '1.4' }}>
-                          <span style={{ fontWeight: '600', color: 'var(--color-primary)', display: 'block' }}>
-                            🤖 {a.anomaly_label || a.anomaly_code || 'AI Flagged'}
+                  {anomalies.map((a) => {
+                    const isWeightAnomaly = a.anomaly_code === 'WEIGHT_ANOMALY' || a.anomaly_code === 'WEIGHT_DISCREPANCY';
+                    const icon = isWeightAnomaly ? '⚖️' : '🤖';
+                    return (
+                      <tr key={a.id}>
+                        <td>{fmtDate(a.txn_datetime)}</td>
+                        <td className="font-mono">{a.lot_id}</td>
+                        <td><span className="admin-table__name">{a.material_category}</span></td>
+                        <td>
+                          {a.quantity_weight_kg} kg
+                          {a.estimated_weight_kg != null && (
+                            <span className="admin-table__sub" style={{ color: isWeightAnomaly ? 'var(--color-error, #dc2626)' : 'inherit' }}>
+                              Est: {a.estimated_weight_kg} kg
+                              {a.weight_dev_pct != null && ` (${Number(a.weight_dev_pct) > 0 ? '+' : ''}${a.weight_dev_pct}%)`}
+                            </span>
+                          )}
+                        </td>
+                        <td>₹{Number(a.final_price).toLocaleString('en-IN')}</td>
+                        <td className="font-mono">
+                          ₹{a.unit_price}/kg
+                          <span className="admin-table__sub">
+                            {Number(a.sample_count || 0) >= 5 ? `Hist Avg: ₹${a.avg_unit_price}/kg` : `Mkt Bench: ₹${a.avg_unit_price}/kg`}
                           </span>
-                          <span className="text-muted" style={{ display: 'block', marginTop: '2px' }}>
-                            {a.ai_explanation || 'Unit price violates statistical or market benchmark tolerances.'}
+                        </td>
+                        <td className="font-mono" style={{ fontWeight: '600', color: Math.abs(Number(a.z_score)) > 2 ? 'var(--color-error, #dc2626)' : 'inherit' }}>
+                          {a.z_score != null ? `${Number(a.z_score) > 0 ? '+' : ''}${a.z_score}σ` : '—'}
+                        </td>
+                        <td>
+                          <span className={`dataset-outcome dataset-outcome--${a.severity === 'high' ? 'dismissed' : 'corrected'}`} style={{ color: a.severity === 'high' ? 'var(--color-error, #dc2626)' : 'var(--color-warning, #b45309)' }}>
+                            {a.severity?.toUpperCase()}
                           </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td style={{ minWidth: '280px' }}>
+                          <div style={{ fontSize: '0.85rem', lineHeight: '1.4' }}>
+                            <span style={{ fontWeight: '600', color: isWeightAnomaly ? 'var(--color-error, #dc2626)' : 'var(--color-primary)', display: 'block' }}>
+                              {icon} {a.anomaly_label || a.anomaly_code || 'AI Flagged'}
+                            </span>
+                            <span className="text-muted" style={{ display: 'block', marginTop: '2px' }}>
+                              {a.ai_explanation || 'Unit price violates statistical or market benchmark tolerances.'}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

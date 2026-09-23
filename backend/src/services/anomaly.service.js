@@ -180,6 +180,56 @@ export const checkTransactionAnomaly = async (data) => {
     }
   }
 
+  // ── Weight Anomaly Check ─────────────────────────────────────────────────────
+  // Compare final handover weight vs the collector's estimated weight at lot creation.
+  // A big gap signals under-delivery (short-weighting) or over-reporting.
+  let weightAnomaly = null;
+  if (originalWeight && originalWeight > 0 && currentWeight > 0) {
+    const weightDiffPct = ((currentWeight - originalWeight) / originalWeight) * 100;
+    const absDiff = Math.abs(weightDiffPct);
+
+    if (absDiff > 50) {
+      // > 50% deviation is critical — very likely fraud or gross error
+      isAnomalous = true;
+      const direction = currentWeight < originalWeight ? 'short' : 'excess';
+      flags.push({
+        type: 'weight_anomaly',
+        message: `Final weight (${currentWeight} kg) differs from estimated weight (${originalWeight} kg) by ${absDiff.toFixed(1)}% — ${direction}-weight suspected.`,
+        severity: 'high',
+        direction,
+        estimated_kg: originalWeight,
+        final_kg: currentWeight,
+        deviation_pct: parseFloat(weightDiffPct.toFixed(1)),
+      });
+      weightAnomaly = {
+        type: direction === 'short' ? 'short_weight' : 'excess_weight',
+        estimated_kg: originalWeight,
+        final_kg: currentWeight,
+        deviation_pct: parseFloat(weightDiffPct.toFixed(1)),
+        message: `Collector estimated ${originalWeight} kg but final certified weight is ${currentWeight} kg (${absDiff.toFixed(1)}% ${direction}).`,
+      };
+    } else if (absDiff > 30) {
+      // 30–50% — flag for review but lower severity
+      const direction = currentWeight < originalWeight ? 'short' : 'excess';
+      flags.push({
+        type: 'weight_anomaly',
+        message: `Final weight (${currentWeight} kg) differs from estimated weight (${originalWeight} kg) by ${absDiff.toFixed(1)}%.`,
+        severity: 'medium',
+        direction,
+        estimated_kg: originalWeight,
+        final_kg: currentWeight,
+        deviation_pct: parseFloat(weightDiffPct.toFixed(1)),
+      });
+      weightAnomaly = {
+        type: 'weight_discrepancy',
+        estimated_kg: originalWeight,
+        final_kg: currentWeight,
+        deviation_pct: parseFloat(weightDiffPct.toFixed(1)),
+        message: `Weight discrepancy: estimated ${originalWeight} kg, final ${currentWeight} kg (${absDiff.toFixed(1)}% difference).`,
+      };
+    }
+  }
+
   return {
     is_anomalous: isAnomalous,
     unit_price: parseFloat(unitPrice.toFixed(2)),
@@ -198,6 +248,7 @@ export const checkTransactionAnomaly = async (data) => {
         }
       : null,
     quote_status: quoteStatus,
+    weight_anomaly: weightAnomaly,
     flags,
   };
 };
@@ -225,15 +276,20 @@ export const getAnomalies = async ({ category, page = 1, limit = 20 }) => {
   const offset = (page - 1) * limit;
 
   // Get transactions with category stats for anomaly flagging
+  // NOTE: cg_quantity_weight_kg = certified scale weight at handover (the real final weight)
+  //       quantity_weight_kg     = original estimated weight at lot creation
+  //       final_price            = settled payout (rate × certified weight)
   const result = await query(
     `WITH category_stats AS (
        SELECT 
          material_category,
-         AVG(final_price / NULLIF(quantity_weight_kg, 0)) AS avg_unit_price,
-         STDDEV_POP(final_price / NULLIF(quantity_weight_kg, 0)) AS stddev_unit_price,
+         -- Use certified weight for accurate per-kg benchmark
+         AVG(final_price / NULLIF(COALESCE(cg_quantity_weight_kg, quantity_weight_kg), 0)) AS avg_unit_price,
+         STDDEV_POP(final_price / NULLIF(COALESCE(cg_quantity_weight_kg, quantity_weight_kg), 0)) AS stddev_unit_price,
          COUNT(*) AS sample_count
        FROM transactions
-       WHERE final_price IS NOT NULL AND quantity_weight_kg > 0
+       WHERE final_price IS NOT NULL
+         AND COALESCE(cg_quantity_weight_kg, quantity_weight_kg) > 0
        GROUP BY material_category
      ),
      latest_prices AS (
@@ -245,12 +301,20 @@ export const getAnomalies = async ({ category, page = 1, limit = 20 }) => {
      ),
      calc AS (
        SELECT 
-         t.id, t.lot_id, t.material_category, t.quantity_weight_kg,
+         t.id, t.lot_id, t.material_category,
+         -- Certified final weight (what was actually weighed on the scale)
+         COALESCE(t.cg_quantity_weight_kg, t.quantity_weight_kg) AS quantity_weight_kg,
+         t.cg_quantity_weight_kg AS certified_weight_kg,
+         -- Original estimate at lot creation
+         t.quantity_weight_kg AS original_est_weight_kg,
          t.quoted_price, t.final_price, t.recycler_id, t.txn_datetime,
          r.name AS recycler_name,
          lp.market_range_low, lp.market_range_high,
          COALESCE(cs.sample_count, 0) AS sample_count,
-         ROUND((t.final_price / NULLIF(t.quantity_weight_kg, 0))::numeric, 2) AS unit_price,
+         -- Collector's approx estimate from lot creation (for weight deviation)
+         m.approx_weight_kg AS estimated_weight_kg,
+         -- Unit price using the CERTIFIED weight (real per-kg rate paid)
+         ROUND((t.final_price / NULLIF(COALESCE(t.cg_quantity_weight_kg, t.quantity_weight_kg), 0))::numeric, 2) AS unit_price,
          ROUND(
            CASE 
              WHEN cs.sample_count >= 5 THEN cs.avg_unit_price
@@ -267,11 +331,19 @@ export const getAnomalies = async ({ category, page = 1, limit = 20 }) => {
                THEN lp.buying_price * 0.15
              ELSE 25.0
            END, 0.01
-         ) AS effective_stddev
+         ) AS effective_stddev,
+         -- Weight deviation: certified final weight vs collector's approx estimate
+         CASE
+           WHEN m.approx_weight_kg IS NOT NULL AND m.approx_weight_kg > 0
+                AND t.cg_quantity_weight_kg IS NOT NULL AND t.cg_quantity_weight_kg > 0
+             THEN ROUND(((t.cg_quantity_weight_kg - m.approx_weight_kg) / m.approx_weight_kg * 100)::numeric, 1)
+           ELSE NULL
+         END AS weight_dev_pct
        FROM transactions t
        LEFT JOIN category_stats cs ON t.material_category = cs.material_category
        LEFT JOIN latest_prices lp ON t.material_category = lp.material_category
        LEFT JOIN recyclers r ON t.recycler_id = r.id
+       LEFT JOIN materials m ON t.lot_id = m.lot_id
        ${whereClause}
      ),
      flagged AS (
@@ -279,34 +351,55 @@ export const getAnomalies = async ({ category, page = 1, limit = 20 }) => {
          c.*,
          ROUND(((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 2) AS z_score,
          CASE
-           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 2 THEN 'high'
-           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 1.5 THEN 'medium'
-           WHEN c.market_range_low IS NOT NULL AND c.unit_price < c.market_range_low THEN 'high'
-           WHEN c.market_range_high IS NOT NULL AND c.unit_price > (c.market_range_high * 1.5) THEN 'medium'
-           WHEN c.quoted_price IS NOT NULL AND c.unit_price < ((c.quoted_price / NULLIF(c.quantity_weight_kg, 0)) * 0.95) THEN 'medium'
+           WHEN ABS(COALESCE(c.weight_dev_pct, 0)) > 50                                              THEN 'high'
+           WHEN ABS(COALESCE(c.weight_dev_pct, 0)) > 30                                              THEN 'medium'
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 2                      THEN 'high'
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 1.5                    THEN 'medium'
+           WHEN c.market_range_low IS NOT NULL AND c.unit_price < c.market_range_low                 THEN 'high'
+           WHEN c.market_range_high IS NOT NULL AND c.unit_price > (c.market_range_high * 1.5)       THEN 'medium'
+           WHEN c.quoted_price IS NOT NULL AND c.unit_price < ((c.quoted_price / NULLIF(c.original_est_weight_kg, 0)) * 0.95) THEN 'medium'
            ELSE 'normal'
          END AS severity,
          CASE
-           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 2 THEN 'STATISTICAL_OUTLIER'
-           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 1.5 THEN 'STATISTICAL_DEV'
-           WHEN c.market_range_low IS NOT NULL AND c.unit_price < c.market_range_low THEN 'BELOW_MARKET_MIN'
-           WHEN c.market_range_high IS NOT NULL AND c.unit_price > (c.market_range_high * 1.5) THEN 'ABOVE_MARKET_MAX'
-           WHEN c.quoted_price IS NOT NULL AND c.unit_price < ((c.quoted_price / NULLIF(c.quantity_weight_kg, 0)) * 0.95) THEN 'QUOTE_HAIRCUT'
+           WHEN ABS(COALESCE(c.weight_dev_pct, 0)) > 50                                              THEN 'WEIGHT_ANOMALY'
+           WHEN ABS(COALESCE(c.weight_dev_pct, 0)) > 30                                              THEN 'WEIGHT_DISCREPANCY'
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 2                      THEN 'STATISTICAL_OUTLIER'
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 1.5                    THEN 'STATISTICAL_DEV'
+           WHEN c.market_range_low IS NOT NULL AND c.unit_price < c.market_range_low                 THEN 'BELOW_MARKET_MIN'
+           WHEN c.market_range_high IS NOT NULL AND c.unit_price > (c.market_range_high * 1.5)       THEN 'ABOVE_MARKET_MAX'
+           WHEN c.quoted_price IS NOT NULL AND c.unit_price < ((c.quoted_price / NULLIF(c.original_est_weight_kg, 0)) * 0.95) THEN 'QUOTE_HAIRCUT'
            ELSE 'NORMAL'
          END AS anomaly_code,
          CASE
-           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 2 THEN 'Statistical Outlier (' || ROUND(ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 1) || 'σ)'
-           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 1.5 THEN 'Statistical Deviation (' || ROUND(ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 1) || 'σ)'
-           WHEN c.market_range_low IS NOT NULL AND c.unit_price < c.market_range_low THEN 'Below Market Range Minimum'
-           WHEN c.market_range_high IS NOT NULL AND c.unit_price > (c.market_range_high * 1.5) THEN 'Above Market Range Maximum'
-           WHEN c.quoted_price IS NOT NULL AND c.unit_price < ((c.quoted_price / NULLIF(c.quantity_weight_kg, 0)) * 0.95) THEN 'Unapproved Quote Rate Haircut'
+           WHEN ABS(COALESCE(c.weight_dev_pct, 0)) > 50
+             THEN 'Short-Weight / Excess-Weight (' || ABS(c.weight_dev_pct) || '% deviation)'
+           WHEN ABS(COALESCE(c.weight_dev_pct, 0)) > 30
+             THEN 'Weight Discrepancy (' || ABS(c.weight_dev_pct) || '% from estimate)'
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 2
+             THEN 'Statistical Outlier (' || ROUND(ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 1) || 'σ)'
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 1.5
+             THEN 'Statistical Deviation (' || ROUND(ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 1) || 'σ)'
+           WHEN c.market_range_low IS NOT NULL AND c.unit_price < c.market_range_low
+             THEN 'Below Market Range Minimum'
+           WHEN c.market_range_high IS NOT NULL AND c.unit_price > (c.market_range_high * 1.5)
+             THEN 'Above Market Range Maximum'
+           WHEN c.quoted_price IS NOT NULL AND c.unit_price < ((c.quoted_price / NULLIF(c.original_est_weight_kg, 0)) * 0.95)
+             THEN 'Unapproved Quote Rate Haircut'
            ELSE 'Normal'
          END AS anomaly_label,
          CASE
-           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 2 THEN 'Unit price ₹' || c.unit_price || '/kg deviates by ' || ROUND(ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 1) || 'σ from expected benchmark (₹' || c.avg_unit_price || '/kg).'
-           WHEN c.market_range_low IS NOT NULL AND c.unit_price < c.market_range_low THEN 'Unit price ₹' || c.unit_price || '/kg is below the prevailing regional market benchmark (₹' || ROUND(c.market_range_low::numeric, 2) || ' – ₹' || ROUND(c.market_range_high::numeric, 2) || '/kg), resulting in a ' || ROUND(ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 1) || 'σ deviation.'
-           WHEN c.market_range_high IS NOT NULL AND c.unit_price > (c.market_range_high * 1.5) THEN 'Unit price ₹' || c.unit_price || '/kg is significantly higher than regional market upper bound (₹' || ROUND(c.market_range_high::numeric, 2) || '/kg).'
-           WHEN c.quoted_price IS NOT NULL AND c.unit_price < ((c.quoted_price / NULLIF(c.quantity_weight_kg, 0)) * 0.95) THEN 'Payout rate (₹' || c.unit_price || '/kg) is lower than the accepted recycler quote rate (₹' || ROUND((c.quoted_price / NULLIF(c.quantity_weight_kg, 0))::numeric, 2) || '/kg).'
+           WHEN ABS(COALESCE(c.weight_dev_pct, 0)) > 50
+             THEN 'Final certified weight (' || c.quantity_weight_kg || ' kg) differs from collector estimated weight (' || c.estimated_weight_kg || ' kg) by ' || ABS(c.weight_dev_pct) || '% — short-weighting or material substitution suspected.'
+           WHEN ABS(COALESCE(c.weight_dev_pct, 0)) > 30
+             THEN 'Weight discrepancy: collector estimated ' || c.estimated_weight_kg || ' kg but scale recorded ' || c.quantity_weight_kg || ' kg (' || ABS(c.weight_dev_pct) || '% difference). Review handover record.'
+           WHEN ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev) > 2
+             THEN 'Unit price ₹' || c.unit_price || '/kg deviates by ' || ROUND(ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 1) || 'σ from expected benchmark (₹' || c.avg_unit_price || '/kg).'
+           WHEN c.market_range_low IS NOT NULL AND c.unit_price < c.market_range_low
+             THEN 'Unit price ₹' || c.unit_price || '/kg is below the prevailing regional market benchmark (₹' || ROUND(c.market_range_low::numeric, 2) || ' – ₹' || ROUND(c.market_range_high::numeric, 2) || '/kg), resulting in a ' || ROUND(ABS((c.unit_price - c.avg_unit_price) / c.effective_stddev)::numeric, 1) || 'σ deviation.'
+           WHEN c.market_range_high IS NOT NULL AND c.unit_price > (c.market_range_high * 1.5)
+             THEN 'Unit price ₹' || c.unit_price || '/kg is significantly higher than regional market upper bound (₹' || ROUND(c.market_range_high::numeric, 2) || '/kg).'
+           WHEN c.quoted_price IS NOT NULL AND c.unit_price < ((c.quoted_price / NULLIF(c.original_est_weight_kg, 0)) * 0.95)
+             THEN 'Payout rate (₹' || c.unit_price || '/kg) is lower than the accepted recycler quote rate (₹' || ROUND((c.quoted_price / NULLIF(c.original_est_weight_kg, 0))::numeric, 2) || '/kg).'
            ELSE 'Payout is within normal market and statistical bounds.'
          END AS ai_explanation
        FROM calc c
