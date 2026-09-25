@@ -18,6 +18,13 @@ export function saveSession(session) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
+export function updateSession(updates) {
+  const s = getSession();
+  if (s) {
+    saveSession({ ...s, ...updates });
+  }
+}
+
 export function clearSession() {
   localStorage.removeItem(SESSION_KEY);
 }

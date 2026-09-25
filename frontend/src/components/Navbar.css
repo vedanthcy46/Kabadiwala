@@ -71,12 +71,16 @@
   }
 }
 
-/* Desktop Nav */
 .navbar__nav {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.navbar__nav::-webkit-scrollbar {
+  display: none;
 }
 
 .navbar__nav-item {

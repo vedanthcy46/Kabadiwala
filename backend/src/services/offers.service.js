@@ -513,8 +513,19 @@ export const getAvailableLots = async (recyclerId) => {
 
   const result = await query(
     `SELECT m.lot_id, m.category, m.approx_weight_kg, m.description, m.created_at, m.collection_lat, m.collection_lng,
-            t.quoted_price AS market_estimate, t.collection_location,
-            c.name AS collector_name, c.operating_location
+            t.collection_location, c.name AS collector_name, c.operating_location,
+            -- Real market per-kg benchmark from prices table (most recent, city-matched or global fallback)
+            COALESCE(
+              (SELECT p.buying_price FROM prices p
+               WHERE p.material_category = m.category
+                 AND p.recycler_id IS NULL
+                 AND (p.location ILIKE '%' || COALESCE(t.collection_location, c.operating_location, 'Bengaluru') || '%'
+                      OR COALESCE(t.collection_location, c.operating_location, 'Bengaluru') ILIKE '%' || p.location || '%')
+               ORDER BY p.price_date DESC LIMIT 1),
+              (SELECT p2.buying_price FROM prices p2
+               WHERE p2.material_category = m.category AND p2.recycler_id IS NULL
+               ORDER BY p2.price_date DESC LIMIT 1)
+            ) AS market_price_per_kg
      FROM materials m
      JOIN transactions t ON m.lot_id = t.lot_id
      LEFT JOIN collectors c ON m.collector_id = c.id
@@ -534,13 +545,26 @@ export const getAvailableLots = async (recyclerId) => {
     [expandedMaterials, recyclerId]
   );
 
+  // Compute market_estimate = per-kg rate × weight on JS side so frontend always gets both
+  const rowsWithEstimate = result.rows.map(row => {
+    const perKg = row.market_price_per_kg != null ? Number(row.market_price_per_kg) : null;
+    const weight = row.approx_weight_kg != null ? Number(row.approx_weight_kg) : null;
+    return {
+      ...row,
+      market_price_per_kg: perKg,
+      market_estimate: (perKg != null && weight != null && weight > 0)
+        ? Math.round(perKg * weight)
+        : null,
+    };
+  });
+
   const recyclerCity = resolvePricingLocation(
     recycler.facility_location || recycler.service_area || '',
     recycler.latitude,
     recycler.longitude
   );
 
-  return result.rows.filter((lot) => {
+  return rowsWithEstimate.filter((lot) => {
     const lotCity = resolvePricingLocation(
       lot.collection_location || lot.operating_location || '',
       lot.collection_lat,

@@ -155,8 +155,8 @@ export default function IncomingLots() {
                     {lot.lot_id} · {lot.category}
                   </Link>
                   <div className="quote-item__status">
-                    {lot.approx_weight_kg ?? '—'} kg · est. {fmt(lot.estimated_value)}
-                    {lot.estimated_value && lot.approx_weight_kg ? ` (${fmt(lot.estimated_value / lot.approx_weight_kg)}/kg)` : ''}
+                    {lot.approx_weight_kg ?? '—'} kg
+                    {lot.estimated_value != null && <> · est. {fmt(lot.estimated_value)}</>}
                   </div>
                 </div>
 
@@ -213,8 +213,13 @@ export default function IncomingLots() {
                     {lot.lot_id} · {lot.category}
                   </Link>
                   <div className="quote-item__status">
-                    {lot.approx_weight_kg ?? '—'} kg · est. {fmt(lot.market_estimate)}
-                    {lot.market_estimate && lot.approx_weight_kg ? ` (${fmt(lot.market_estimate / lot.approx_weight_kg)}/kg)` : ''}
+                    {lot.approx_weight_kg ?? '—'} kg
+                    {lot.market_price_per_kg != null && (
+                      <> · <strong style={{ color: 'var(--color-primary)' }}>₹{Number(lot.market_price_per_kg).toLocaleString('en-IN', { maximumFractionDigits: 0 })}/kg</strong></>
+                    )}
+                    {lot.market_estimate != null && (
+                      <> · est. {fmt(lot.market_estimate)}</>
+                    )}
                   </div>
                   <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', fontSize: '0.82rem' }}>
                     {lot.collection_location && (
