@@ -77,10 +77,20 @@
   gap: var(--space-2);
   flex: 1;
   overflow-x: auto;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+  padding-bottom: 2px;
 }
+
 .navbar__nav::-webkit-scrollbar {
-  display: none;
+  height: 4px;
+}
+.navbar__nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+.navbar__nav::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 4px;
 }
 
 .navbar__nav-item {
