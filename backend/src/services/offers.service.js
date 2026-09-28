@@ -2,6 +2,7 @@ import { query } from '../db.js';
 import { ApiError } from '../utils/ApiError.js';
 import { resolvePricingLocation } from './valuation.service.js';
 import { recordPriceObservation, updateObservationStatus } from './priceObservation.service.js';
+import { SCRAP_COMMODITY_BENCHMARKS, REGIONAL_MARKET_FACTORS } from './marketPrice.service.js';
 
 /**
  * Dynamically syncs a recycler's offered quote into the live prices board
@@ -32,6 +33,33 @@ export const syncOfferPriceToBoard = async ({ recycler_id, lot_id, offered_price
   const resolvedLoc = resolvePricingLocation(locStr, lat, lng);
   const category = lot.category;
   const todayStr = new Date().toISOString().slice(0, 10);
+
+  // --- OUTLIER DETECTION (CIRCUIT BREAKER) ---
+  // We apply a Hard Limit bound based on historical benchmarks to prevent typos or fraudulent bids 
+  // from artificially inflating the global market board.
+  let isOutlier = false;
+  let baseCat = category;
+  if (baseCat === 'Mixed Plastic') baseCat = 'Plastic';
+  if (baseCat === 'Motor/Magnet Assembly') baseCat = 'Motor';
+  if (baseCat === 'LCD Panel') baseCat = 'LCD';
+
+  const bench = SCRAP_COMMODITY_BENCHMARKS[baseCat];
+  if (bench) {
+    const locFactor = REGIONAL_MARKET_FACTORS[resolvedLoc]?.multiplier || 1.0;
+    // Strict physical bounds. We allow up to 2.5x the maximum known historical range, and down to 0.4x the minimum.
+    // Anything outside is mathematically treated as a typo or anomaly.
+    const absoluteMin = bench.volatilityRange[0] * locFactor * 0.4;
+    const absoluteMax = bench.volatilityRange[1] * locFactor * 2.5;
+
+    if (perKgRate < absoluteMin || perKgRate > absoluteMax) {
+      console.warn(`[syncOfferPriceToBoard] Outlier detected! ₹${perKgRate}/kg is outside bounds [₹${absoluteMin.toFixed(2)}, ₹${absoluteMax.toFixed(2)}] for ${category}. Ignoring in market aggregation.`);
+      isOutlier = true;
+    }
+  }
+
+  if (isOutlier) {
+    return; // Completely ignore this quote for the global market board and analytics
+  }
 
   // Record observation in price_observations dataset
   await recordPriceObservation({
