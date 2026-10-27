@@ -1,167 +1,903 @@
-# Kabadiwala Connect — Updated Deliverables
+# ♻️ E-Setu
+### Connecting Scrap Collectors to Authorized Recyclers Through Transparency and Technology
 
-**New role split:**
-- **Yashas** — Database & Datasets + Pitch Deck (PPT)
-- **Vedanth** — Backend (APIs & Business Logic)
-- **Tanush** — Frontend (Collector-facing + Recycler-facing, full UI)
+E-Setu is a digital platform designed to connect informal scrap collectors (kabadiwalas), authorized recyclers, and administrators through a transparent, traceable, and efficient recycling ecosystem.
 
-**Getting started (run the backend + connect a frontend):** see
-[`backend/docs/RUNNING.md`](backend/docs/RUNNING.md) — exact Postgres +
-migrate + seed + start steps, the `/v1` base URL, CORS, and a Vite proxy snippet.
-API reference: [`backend/docs/API.md`](backend/docs/API.md).
-Pricing & Ingestion Engine: [`docs/PRICE_TRENDS_AND_MARKET_INGESTION.md`](docs/PRICE_TRENDS_AND_MARKET_INGESTION.md).
+The platform helps scrap collectors discover competitive prices for recyclable materials, connect with suitable recyclers, compare offers, and maintain digital transaction records. It also provides recyclers with a structured way to discover available scrap materials and enables administrators to monitor transactions, verify recyclers, and investigate suspicious activities.
+
+Our goal is to transform the informal scrap collection process into a more transparent, accessible, and accountable digital ecosystem.
 
 ---
 
-## YASHAS — Database & Datasets + PPT
+## 📌 Table of Contents
 
-### 1. Database Schema & Datasets
-*(PS: "Dataset Requirements" section — explicit, detailed spec)*
-Design and implement all 6 required datasets as real tables:
-- **Material Dataset** — category, sub-category, description, image, approx. weight, condition, source type, estimated value
-- **Price Dataset** — material category, location, date/time, buying price, quoted/selling price, unit, recycler/aggregator, historical price
-- **Recycler Dataset** — name, location, materials accepted, authorization status/details, contact, offered rate, pickup availability, service area
-- **Transaction Dataset** — lot ID, collector ID, material category, quantity/weight, quoted price, final price, recycler ID, collection/handover location, date/time, payment status, transaction status
-- **Traceability Dataset** — lot ID, photographs, weight, timestamp, GPS, handover reference number, recycler confirmation, subsequent status
-- **Collector Dataset** — minimal profile: collector ID, preferred language, general operating location, transaction/earnings history (avoid excess personal data, per spec)
-
-### 2. Seed Data
-**Deliverable:**
-- 8-10 realistic recycler records (mixed authorization status, varied rates/locations)
-- 30-40 historical price records across 6+ material categories with real day-to-day variation (not flat numbers — needed for trend charts and valuation logic to look genuine)
-
-### 3. AI/ML Dataset Documentation
-*(PS: explicitly requires teams to "clearly identify the source, quality, size, and limitations" of the AI/ML training dataset)*
-**Deliverable:** A short written document covering where any ML-relevant data comes from, how much there is, and its known limitations — this is judged content, not just a technical nice-to-have.
-
-### 4. Dataset Governance Write-Up
-*(PS: "demonstrate how the dataset is generated, stored, validated, updated, and used... rather than treating the dataset as a static database")*
-**Deliverable:** Short explanation of validation/update logic — be ready to answer this directly if a judge asks.
-
-### 5. Pitch Deck (PPT)
-**Deliverable:** Full presentation covering:
-- Problem (informal collectors' exclusion from formal recycling)
-- The gap (informational + institutional, not just technological — per PS background)
-- Solution walkthrough (tied to what Tanush actually builds)
-- Live demo moment (coordinate exact flow with Tanush before finalizing slides)
-- Unit-economics summary slide (coordinate with whoever owns field research/econ numbers)
-- Impact/closing
-
-**Note:** Since dataset work usually finishes before frontend/backend are fully done, build the PPT skeleton early and fill in demo screenshots/numbers as they become available — don't leave it until the last two days.
+- [Problem Statement](#-problem-statement)
+- [Our Solution](#-our-solution)
+- [Objectives](#-objectives)
+- [How E-Setu Works](#-how-e-setu-works)
+- [User Roles](#-user-roles)
+- [Core Features](#-core-features)
+- [Pricing and Valuation](#-pricing-and-valuation)
+- [QR-Based Transaction Verification](#-qr-based-transaction-verification)
+- [Anomaly Detection](#-anomaly-detection)
+- [System Architecture](#-system-architecture)
+- [Data Flow](#-data-flow)
+- [Technology Stack](#-technology-stack)
+- [Expected Impact](#-expected-impact)
+- [Future Enhancements](#-future-enhancements)
 
 ---
 
-## VEDANTH — Backend (APIs & Business Logic)
+## 🚨 Problem Statement
 
-### 1. Instant Valuation Logic
-*(PS: "enter approximate weight, and receive an instant value estimate")*
-**Deliverable:** API endpoint calculating real value estimates from Yashas's price dataset (material + location + weight) — genuine calculation, not fixed/random.
+Informal scrap collectors play an important role in recovering recyclable materials from households, commercial establishments, and local markets.
 
-### 2. Price Trend API
-*(PS: "identify basic price trends")*
-**Deliverable:** Endpoint returning aggregated historical price data for Tanush's trend chart.
+However, the traditional scrap collection ecosystem faces several challenges.
 
-### 3. Recycler Matching Engine
-*(PS: "identify and rank suitable authorized recyclers... based on location, material category, offered rate, pickup availability, and authorization status")*
-**Deliverable:**
-- Filter to `authorization_status = authorized` only
-- Filter to recyclers accepting the lot's material category
-- Real distance calculation (Haversine formula)
-- Ranking logic combining distance + rate + pickup availability
+### 1. Uncertain Scrap Prices
 
-### 4. Handover & Traceability Logic
-*(PS: "digital and verifiable handover/transfer record containing photographs, weight, timestamp, GPS/location details, and a unique reference that can be confirmed by the recycler")*
-**Deliverable:**
-- Unique handover reference generation
-- Recycler confirmation endpoint (status: pending → confirmed) with audit trail
+Collectors may not have access to reliable market price information. As a result, they may struggle to determine whether the price offered by a buyer is competitive.
 
-### 5. Recycler Profile APIs
-**Deliverable:** CRUD endpoints for recycler profile management (used by Tanush's recycler interface).
+### 2. Limited Access to Recyclers
 
-### 6. Anomaly Detection
-*(PS: "identification of abnormal or inconsistent transaction values, wherever sufficient training data is available")*
-**Deliverable:** Statistical outlier check flagging transactions significantly outside a material's typical price range.
+Individual collectors often depend on nearby scrap dealers or personal contacts. Finding suitable authorized recyclers and comparing offers can be difficult.
 
-### 7. Offline Sync Backend
-*(PS: "operate in low-connectivity environments... synchronized when connectivity becomes available")*
-**Deliverable:** Batch endpoint accepting offline-queued records from Tanush's frontend, handling duplicate-submission safely.
+### 3. Lack of Transaction Transparency
 
-### 8. Payment Status Logic
-*(PS: "Allow cash-based transactions while keeping digital payment optional and not making it a prerequisite")*
-**Deliverable:** Transaction/payment fields treating cash as default — digital payment stays genuinely optional in the data model.
+Material weights, agreed prices, final settlement amounts, and transaction details may not be consistently documented.
 
----
+### 4. Limited Bargaining Power
 
-## TANUSH — Frontend (Full UI — Collector + Recycler)
+Collectors handling small quantities may have difficulty accessing multiple buyers or negotiating competitive prices.
 
-> **Before writing any UI code:** get the backend running and confirm you can hit
-> the `/v1` endpoints (valuation, trends, matching). Follow
-> [`backend/docs/RUNNING.md`](backend/docs/RUNNING.md). All responses wrap data
-> in `{ success, data }`; see [`backend/docs/API.md`](backend/docs/API.md).
+### 5. Weak Traceability
 
-**Heads up before the list:** this is now the entire frontend scope for one person — collector app, recycler interface, traceability UI, multilingual support, and offline-first architecture. That's meaningfully more than what was previously split across two people. Flagging this now so you can prioritize deliberately rather than discover the crunch late. Suggested priority order is at the bottom.
+Without structured digital records, investigating disputes involving material quality, weight differences, or pricing can be difficult.
 
-### 1. Lot Creation Flow
-*(PS: photo, categorize, weight, instant value estimate)*
-- Photo capture/upload with preview
-- Category/sub-category selector (exact PS material list: CRTs, LCD panels, PCBs, cables, batteries, motors/magnet-bearing assemblies, mixed plastics)
-- Weight input
-- Live instant-value display (calls Vedanth's API)
+### 6. Recycler Verification Challenges
 
-### 2. Price Discovery Board
-*(PS: current rates, spoken price info, basic trends)*
-- Price table/cards by material + location
-- Trend chart (Recharts/Chart.js) from Vedanth's API
-- Spoken price read-aloud (Web Speech API — explicit PS requirement)
+Collectors need a more reliable way to identify recyclers whose authorization and registration status have been checked.
 
-### 3. Earnings Ledger
-*(PS: transactions, payments, pending dues)*
-- Transaction history, real totals from API data
+### 7. Limited Digital Accessibility
 
-### 4. Safety Guidance Page
-*(PS: burning, unsafe battery/CRT handling — pictorial and/or audio)*
-- Cover all three named hazards, with audio playback
+Some collectors may experience unreliable internet connectivity or have limited experience using complex digital platforms.
 
-### 5. Recycler Interface
-*(PS: explicit required deliverable)*
-- Recycler profile view/edit
-- Incoming matched-lots dashboard
+### The Core Problem
 
-### 6. Matched Recycler Results Display
-- Ranked recycler list shown to collector post-lot-creation
-
-### 7. Handover & Traceability UI
-- Collector: initiate handover, GPS capture, reference display
-- Recycler: confirm-received action with live status update
-
-### 8. Offline-First Architecture
-*(PS: explicit requirement)*
-- IndexedDB local storage, sync queue, connectivity-based auto-sync, real status indicator
-
-### 9. Multilingual + Low-Literacy UI
-*(PS: Hindi + Marathi minimum, genuinely usable for low-literacy users)*
-- Apply across all screens above
-
-### 10. Device Constraints
-- Lean bundle size, entry-level Android performance consideration
+There is a need for a connected platform that improves price discovery, buyer access, transaction verification, and traceability while remaining accessible to informal scrap collectors.
 
 ---
 
-## Suggested Priority Order for Tanush (given the scope concentration)
-Given one person now owns all frontend, build in this order so that if time runs out, you cut from the bottom, not the middle:
+## 💡 Our Solution
 
-1. Lot Creation + Price Board (core collector flow — must work)
-2. Recycler Interface + Matching Display (core recycler flow — must work)
-3. Handover & Traceability UI (required deliverable, judges will look for this specifically)
-4. Earnings Ledger
-5. Multilingual pass (can be partial if time-constrained — prioritize the two most-used screens first: Lot Creation and Price Board)
-6. Offline-First Architecture (technically demanding — start early if possible, don't leave for the final days)
-7. Safety Guidance Page
-8. Spoken price/audio polish, device-size optimization
+E-Setu acts as a digital bridge between scrap collectors and authorized recyclers.
 
-## Cross-Team Dependencies
-| Tanush needs help from Vedanth | Vedanth needs from Yashas |
+It combines material listing, AI-assisted classification, price discovery, competitive offers, QR-based handover verification, digital transaction records, and administrative monitoring into one platform.
+
+Instead of relying entirely on informal negotiations, collectors can use E-Setu to:
+
+1. Register and create a collector profile.
+2. Record the recyclable materials they want to sell.
+3. Receive classification assistance and an estimated valuation.
+4. Discover suitable recyclers.
+5. Request offers or receive competitive quotes.
+6. Compare offers and select a preferred buyer.
+7. Verify the physical handover using a QR-based workflow.
+8. Record the final weight and calculate the settlement amount.
+9. Maintain a traceable record of the transaction.
+
+Recyclers can discover available material lots, submit offers, and coordinate pickups.
+
+Administrators can review recycler registrations, monitor platform activity, and investigate unusual pricing or weight discrepancies.
+
+---
+
+## 🎯 Objectives
+
+- Improve scrap price transparency.
+- Help collectors discover competitive buyer offers.
+- Connect collectors with suitable authorized recyclers.
+- Simplify scrap listing and pickup coordination.
+- Maintain digital records of material handovers.
+- Improve traceability of agreed prices, measured weights, and final settlements.
+- Identify potentially suspicious transaction patterns.
+- Support a more efficient and accountable recycling ecosystem.
+- Design the platform to accommodate unreliable internet connectivity.
+
+---
+
+## 🔄 How E-Setu Works
+
+The complete workflow consists of the following stages.
+
+### Step 1: Collector Registration
+
+A scrap collector registers on the platform and creates a profile.
+
+The profile may contain:
+
+- Name and contact details.
+- Collection location.
+- GPS coordinates, when available and permitted.
+- Account and verification status.
+- Transaction history.
+
+The collector can then access the material listing and transaction management features.
+
+### Step 2: Create a Material Lot
+
+The collector creates a lot representing the recyclable materials available for sale.
+
+A lot can contain:
+
+- Material category.
+- Material subtype.
+- Photographs of the materials.
+- Estimated weight.
+- Material condition and other relevant details.
+- Collection location.
+- Estimated value.
+- Lot creation timestamp.
+
+For example:
+
+    Material: Scrap Plastic
+    Subcategory: PET Bottles
+    Estimated Weight: 25 kg
+    Location: Bengaluru
+    Status: Available
+
+The lot becomes the primary record used to connect the collector with potential buyers.
+
+### Step 3: AI-Assisted Material Classification
+
+E-Setu can use image-based classification to assist with identifying recyclable materials.
+
+The collector captures or uploads an image of the scrap.
+
+The classification component analyzes the image and returns a predicted material category.
+
+Example:
+
+    Input: Image of recyclable plastic bottles
+
+    Predicted Category: Plastic
+    Suggested Subcategory: PET Bottles
+    Confidence: Model-dependent
+
+The classification result assists the listing process but should not be treated as a guaranteed identification of material composition or quality.
+
+The collector should be able to review and correct the suggested category.
+
+**Important:** Image classification alone cannot reliably determine the actual weight, purity, or complete composition of a material lot.
+
+If offline classification is supported by the deployed implementation, the model can run locally and synchronize relevant records when connectivity returns.
+
+### Step 4: Price Discovery and Estimated Valuation
+
+E-Setu estimates the potential value of a material lot using available reference prices and relevant lot details.
+
+The valuation process can consider:
+
+- Material category.
+- Material subtype.
+- Estimated weight.
+- Available reference prices.
+- Applicable location-specific pricing data.
+- Material quality, where sufficient information is available.
+
+A basic valuation formula is:
+
+    Estimated Value = Estimated Weight × Reference Price per kg
+
+For example, if the estimated weight is 25 kg and the reference price is ₹20/kg:
+
+    Estimated Value = 25 × ₹20
+                    = ₹500
+
+This is an illustrative calculation, not a guaranteed selling price.
+
+The estimated value provides a reference for the collector. The final price depends on the actual material, buyer offer, agreed terms, and measured weight.
+
+Reference prices should include their source and update time wherever possible.
+
+### Step 5: Find Suitable Recyclers
+
+The platform identifies potentially suitable recyclers for each material lot.
+
+Matching can consider:
+
+- Material compatibility.
+- Recycler authorization status.
+- Offered price.
+- Distance from the collection location.
+- Recycler reliability.
+- Pickup availability.
+
+An example matching score is:
+
+    Matching Score =
+        60% × Price Score
+      + 20% × Distance Score
+      + 12% × Reliability Score
+      +  8% × Pickup Availability Score
+
+These weights represent the proposed matching configuration and can be adjusted as the platform evolves.
+
+Each component must be normalized to a common scoring range before calculating the combined score.
+
+Only recyclers who satisfy the platform's applicable eligibility requirements should be presented as eligible buyers.
+
+### Step 6: Competitive Offers and Bidding
+
+E-Setu supports a workflow in which recyclers can express interest in available material lots and submit offers.
+
+Depending on the listing configuration, a collector may:
+
+- Request quotes from selected recyclers.
+- Receive offers from interested recyclers.
+- Compare prices and other offer details.
+- Review pickup arrangements.
+- Accept a preferred offer.
+
+Example:
+
+| Recycler | Offered Price | Pickup |
+|---|---:|---|
+| Recycler A | ₹19/kg | Available |
+| Recycler B | ₹21/kg | Available |
+| Recycler C | ₹20/kg | Requires confirmation |
+
+For an estimated 25 kg lot, the offer of ₹21/kg corresponds to an indicative amount of ₹525 before any applicable adjustments.
+
+The collector remains responsible for selecting an offer that meets their requirements.
+
+After an offer is accepted, the system should mark the selected offer as accepted and update the status of competing offers according to the bidding rules.
+
+Other offers should not be deleted in a way that destroys the transaction history.
+
+### Step 7: Confirm the Accepted Offer
+
+Once the collector accepts an offer, E-Setu records the agreed transaction terms.
+
+The record should include:
+
+- Lot identifier.
+- Collector identifier.
+- Recycler identifier.
+- Accepted rate per kilogram.
+- Accepted offer timestamp.
+- Pickup terms.
+- Current transaction status.
+
+The accepted offer becomes the reference against which the final settlement can be calculated.
+
+Changes to the agreed rate should be explicitly recorded rather than silently overwriting the original terms.
+
+### Step 8: QR-Based Pickup and Handover
+
+E-Setu uses a QR-based workflow to associate a physical material handover with the corresponding digital transaction.
+
+A possible workflow is:
+
+1. The accepted transaction receives a unique QR code.
+2. The collector and recycler coordinate the pickup.
+3. The QR code is scanned at the appropriate stage of the handover.
+4. The system verifies that the transaction is eligible for the requested action.
+5. Pickup details are recorded.
+6. Photographs or other supporting evidence are attached when required.
+7. The actual measured weight is recorded.
+8. The transaction progresses to the settlement stage.
+
+The QR code serves as a reference to the transaction. It does not, by itself, prove that a pickup occurred or that the recorded weight is correct.
+
+The backend should validate transaction status, participant permissions, and duplicate requests.
+
+Where supported, the system can also record pickup location and timestamp.
+
+### Step 9: Record the Actual Weight
+
+The estimated weight entered during listing may differ from the actual weight measured during pickup.
+
+E-Setu records the final measured weight so that the settlement reflects the material actually accepted.
+
+For example:
+
+    Estimated Weight: 25 kg
+    Actual Weight: 23.5 kg
+    Accepted Rate: ₹21/kg
+
+The final amount is calculated using the actual weight.
+
+### Step 10: Calculate the Final Settlement
+
+The basic settlement calculation is:
+
+    Final Settlement = Actual Weight × Accepted Rate per kg
+
+Using the example above:
+
+    Final Settlement = 23.5 × ₹21
+                     = ₹493.50
+
+The system can retain the estimated value, accepted offer, actual weight, and final settlement as separate fields.
+
+This distinction makes it easier to understand how the transaction progressed from an initial estimate to the final amount.
+
+If deductions, bonuses, transport charges, or other adjustments apply, they should be recorded separately and included according to the agreed transaction terms.
+
+### Step 11: Transaction History and Traceability
+
+After the handover and settlement are completed, E-Setu maintains the relevant transaction record.
+
+A transaction can include:
+
+- Initial material listing.
+- Estimated valuation.
+- Recycler offers.
+- Accepted offer.
+- Pickup confirmation.
+- Actual measured weight.
+- Supporting evidence.
+- Final settlement.
+- Transaction status changes.
+- Relevant timestamps.
+
+These records help collectors, recyclers, and administrators review completed transactions and investigate disputes.
+
+### Step 12: Administrative Monitoring
+
+The administrator dashboard provides an overview of platform operations.
+
+Administrators can manage or review:
+
+- Collector accounts.
+- Recycler registrations.
+- Recycler authorization status.
+- Material lots.
+- Transactions.
+- Reported discrepancies.
+- Suspicious transaction patterns.
+- Platform activity.
+
+When a transaction is flagged, an administrator can review its supporting information and decide whether further investigation is necessary.
+
+An automated alert is an indication that a transaction deserves attention; it is not proof of fraud.
+
+---
+
+## 👥 User Roles
+
+### 1. Scrap Collector
+
+The collector is the person or business supplying recyclable materials.
+
+**Responsibilities and capabilities:**
+
+- Register and manage a profile.
+- Create material lots.
+- Upload material photographs.
+- Review suggested material classifications.
+- View estimated valuations.
+- Discover eligible recyclers.
+- Receive and compare offers.
+- Accept an offer.
+- Coordinate pickup.
+- Review transaction records and settlement details.
+
+### 2. Recycler
+
+The recycler is a buyer or recycling organization that acquires recyclable materials.
+
+**Responsibilities and capabilities:**
+
+- Register an organization profile.
+- Submit required verification information.
+- Complete the applicable authorization process.
+- Discover compatible material lots.
+- Submit offers.
+- Coordinate pickup.
+- Confirm handover details.
+- Review accepted transactions and relevant records.
+
+Registration does not automatically mean that a recycler is authorized. Authorization must be checked according to the applicable verification process.
+
+### 3. Administrator
+
+The administrator oversees platform governance and operational monitoring.
+
+**Responsibilities and capabilities:**
+
+- Review recycler registration and authorization.
+- Manage platform records.
+- Monitor material listings and transactions.
+- Review anomaly alerts.
+- Investigate reported discrepancies.
+- Maintain oversight of transaction workflows.
+- Review platform-level activity.
+
+Administrative actions should be protected by role-based access control and recorded where appropriate.
+
+---
+
+## 🚀 Core Features
+
+| Feature | Purpose |
 |---|---|
-| Valuation, price-trend, matching, handover, recycler-CRUD, offline-sync APIs | Finalized schema + seeded data to build real logic against |
+| Collector Profiles | Maintain collector information and collection location |
+| Material Lot Management | Create and manage recyclable material listings |
+| AI-Assisted Classification | Suggest material categories from images |
+| Price Discovery | Estimate material value using reference price data |
+| Recycler Matching | Identify suitable and eligible buyers |
+| Competitive Offers | Allow collectors to compare recycler quotes |
+| Recycler Verification | Support authorization checks |
+| QR-Based Handover | Associate physical handovers with digital transactions |
+| Weight Recording | Capture actual weight for final settlement |
+| Digital Evidence | Retain supporting photographs and transaction details |
+| Settlement Calculation | Calculate the amount using actual weight and accepted rate |
+| Anomaly Detection | Flag suspicious pricing, weight, or transaction patterns |
+| Administrator Dashboard | Support oversight and investigation |
+| Offline Support | Accommodate limited connectivity where implemented |
 
-**Practical note:** Yashas finishing the schema and seed data early unblocks Vedanth immediately, who in turn unblocks Tanush — so the DB work genuinely sits on the critical path even though it looks like the "lighter" role on paper.
+---
+
+## 💰 Pricing and Valuation
+
+E-Setu distinguishes between three important concepts.
+
+### 1. Estimated Valuation
+
+The initial estimate is based on the estimated weight and available reference price.
+
+    Estimated Value = Estimated Weight × Reference Price
+
+It is an informational estimate rather than a binding offer.
+
+### 2. Accepted Offer
+
+The accepted offer records the rate agreed upon between the collector and recycler.
+
+    Accepted Offer Amount =
+        Estimated Weight × Accepted Rate
+
+This amount is indicative when the actual weight has not yet been established.
+
+### 3. Final Settlement
+
+The final settlement is calculated using the actual measured weight and accepted rate.
+
+    Final Settlement =
+        Actual Weight × Accepted Rate
+
+The system should retain these values separately rather than replacing the initial estimate with the final settlement.
+
+### Example
+
+| Transaction Stage | Value |
+|---|---:|
+| Estimated Weight | 25 kg |
+| Reference Price | ₹20/kg |
+| Initial Estimated Value | ₹500 |
+| Accepted Rate | ₹21/kg |
+| Actual Weight | 23.5 kg |
+| Final Settlement | ₹493.50 |
+
+This structure makes price and weight changes easier to understand and audit.
+
+Reference prices should be clearly distinguished from actual recycler offers. An estimate should never be presented as a guaranteed market price.
+
+---
+
+## 📱 QR-Based Transaction Verification
+
+QR codes connect physical handovers to digital transaction records.
+
+### Proposed Verification Flow
+
+    Collector Creates Lot
+            |
+            v
+    Recycler Offer Accepted
+            |
+            v
+    Transaction Created
+            |
+            v
+    QR Code Generated
+            |
+            v
+    Pickup and Handover
+            |
+            v
+    QR Code Scanned
+            |
+            v
+    Transaction Validated
+            |
+            v
+    Actual Weight Recorded
+            |
+            v
+    Settlement Calculated
+            |
+            v
+    Transaction Completed
+
+### Important Validation Rules
+
+The backend should verify that:
+
+- The transaction exists.
+- The transaction is in the correct state.
+- The requesting user has permission to perform the action.
+- The QR code refers to the intended transaction.
+- The same handover action cannot be completed twice unintentionally.
+- Required weight and evidence fields are present.
+- Settlement is calculated using the recorded actual weight and accepted rate.
+
+QR codes should contain a non-sensitive transaction reference or securely generated token rather than exposing private participant information.
+
+---
+
+## 🛡️ Anomaly Detection
+
+E-Setu can help identify transactions that may require additional review.
+
+The anomaly detection component can evaluate transaction records and flag unusual patterns.
+
+### Potential Anomaly Categories
+
+#### 1. Weight Discrepancy
+
+Compare estimated and actual weights.
+
+    Weight Difference =
+        Estimated Weight - Actual Weight
+
+    Weight Difference Percentage =
+        (Weight Difference / Estimated Weight) × 100
+
+For example:
+
+    Estimated Weight: 25 kg
+    Actual Weight: 20 kg
+    Difference: 5 kg
+    Difference Percentage: 20%
+
+The transaction may be flagged if the discrepancy exceeds a configured threshold.
+
+A weight difference does not automatically indicate misconduct. Measurement error, sorting, moisture, and other factors may explain the difference.
+
+#### 2. Unusually Low Offers
+
+Compare an offer with the available reference price for the same material and relevant market.
+
+An offer significantly below the reference range may trigger a review.
+
+Reference data must be sufficiently recent and comparable for this check to be meaningful.
+
+#### 3. Repeated Suspicious Patterns
+
+The system may identify repeated discrepancies associated with:
+
+- Particular transaction patterns.
+- Repeatedly unusual weight differences.
+- Unusual pricing behavior.
+- Repeatedly reported transactions.
+
+These signals should be evaluated in context and should not automatically be treated as proof of wrongdoing.
+
+### Anomaly Review Workflow
+
+    Transaction Recorded
+            |
+            v
+    Rules Evaluate Transaction
+            |
+            v
+    Potential Anomaly Detected?
+          /       \
+        No         Yes
+        |           |
+        v           v
+    Continue    Create Alert
+                    |
+                    v
+              Admin Reviews
+                    |
+                    v
+            Investigation Outcome
+
+The administrator should be able to review the evidence supporting an alert and record the investigation outcome.
+
+---
+
+## 🏗️ System Architecture
+
+E-Setu can be organized into the following logical components.
+
+### 1. Frontend Application
+
+Provides interfaces for collectors, recyclers, and administrators.
+
+Responsibilities include:
+
+- Authentication interfaces.
+- Material listing forms.
+- Image upload.
+- Price and offer comparison.
+- Transaction management.
+- QR scanning.
+- Dashboards and reports.
+- Offline data handling, where supported.
+
+### 2. Backend API
+
+Implements the core business logic.
+
+Responsibilities include:
+
+- Authentication and authorization.
+- User and role management.
+- Material lot management.
+- Recycler matching.
+- Offer creation and acceptance.
+- Transaction state management.
+- QR validation.
+- Weight and settlement calculations.
+- Anomaly detection.
+- Administrative operations.
+
+### 3. Database
+
+Stores structured application data.
+
+Potential data entities include:
+
+- Users
+- CollectorProfiles
+- RecyclerProfiles
+- MaterialLots
+- ReferencePrices
+- Offers
+- Transactions
+- PickupRecords
+- WeightRecords
+- EvidenceRecords
+- AnomalyAlerts
+- AuditLogs
+
+The exact schema depends on the selected database and implementation.
+
+### 4. AI Classification Component
+
+Processes material images and suggests relevant categories.
+
+Responsibilities may include:
+
+- Image preprocessing.
+- Material classification.
+- Prediction confidence.
+- Category mapping.
+- Local inference, if supported.
+- Handling uncertain predictions.
+
+### 5. Pricing and Matching Services
+
+The pricing service estimates material value using available reference data.
+
+The matching service ranks eligible recyclers according to the configured matching criteria.
+
+Keeping these services separate from the main API makes the business rules easier to maintain and test.
+
+### 6. QR and Transaction Service
+
+Manages transaction references, handover verification, transaction states, and settlement records.
+
+The service should validate every state-changing operation on the backend rather than trusting the frontend alone.
+
+### 7. Administrator Dashboard
+
+Provides authorized administrators with tools to review recycler status, transactions, anomaly alerts, and operational activity.
+
+### 8. Offline Synchronization
+
+If offline support is implemented, the client can temporarily retain permitted operations and synchronize them when connectivity returns.
+
+The synchronization process must handle duplicate requests, conflicting updates, expired actions, and transaction state changes safely.
+
+---
+
+## 🔁 Data Flow
+
+A typical transaction follows this sequence:
+
+    Collector
+       |
+       v
+    Material Lot
+       |
+       v
+    Image Classification
+       |
+       v
+    Estimated Valuation
+       |
+       v
+    Recycler Matching
+       |
+       v
+    Competitive Offers
+       |
+       v
+    Offer Acceptance
+       |
+       v
+    QR-Based Handover
+       |
+       v
+    Actual Weight Recording
+       |
+       v
+    Final Settlement
+       |
+       v
+    Transaction History
+       |
+       v
+    Administrative Monitoring
+
+The material listing, offer, and transaction records should share stable identifiers so that a transaction can be traced back to its original lot.
+
+---
+
+## 🧰 Technology Stack
+
+The following is a suggested technology stack. Replace it with the actual technologies used in the project.
+
+| Component | Suggested Technology |
+|---|---|
+| Frontend | React |
+| UI Styling | Tailwind CSS |
+| Backend | Node.js and Express.js |
+| Database | MongoDB or PostgreSQL |
+| Image Storage | Cloudinary or compatible object storage |
+| AI Classification | Python with a suitable computer vision model |
+| QR Generation | QR-code generation library |
+| QR Scanning | Browser camera API and a QR-scanning library |
+| Authentication | Secure session-based or token-based authentication |
+| Geolocation | Browser Geolocation API, with user permission |
+| Offline Storage | IndexedDB or another suitable local storage mechanism |
+| Deployment | Suitable frontend and backend hosting platforms |
+
+The final stack should be selected according to the team's implementation requirements, available infrastructure, and deployment constraints.
+
+---
+
+## 🌱 Expected Impact
+
+E-Setu aims to create measurable improvements across the scrap recycling ecosystem.
+
+### For Collectors
+
+- Better access to price information.
+- More opportunities to compare offers.
+- Easier discovery of eligible recyclers.
+- Clearer transaction and settlement records.
+- Improved visibility into recorded weight differences.
+
+### For Recyclers
+
+- Access to structured material listings.
+- More efficient material discovery.
+- Improved pickup coordination.
+- Better-organized transaction records.
+
+### For Administrators
+
+- Better visibility into platform activity.
+- More structured recycler verification.
+- Faster identification of unusual transaction patterns.
+- Improved access to evidence when investigating disputes.
+
+### For the Recycling Ecosystem
+
+- Greater transparency in material transactions.
+- Better documentation of recyclable material flows.
+- Improved digital coordination between collectors and recyclers.
+- Potential support for more efficient material recovery.
+
+These are intended outcomes. Their actual impact must be evaluated through pilot deployments and measurable results.
+
+---
+
+## 🔮 Future Enhancements
+
+Potential future improvements include:
+
+- More accurate material classification.
+- Expanded reference price coverage.
+- Location-aware market price discovery.
+- Better recycler recommendation algorithms.
+- Digital receipts and downloadable transaction reports.
+- Improved offline synchronization.
+- Stronger dispute resolution workflows.
+- Integration with compatible weighing systems.
+- Multilingual interfaces for collectors.
+- SMS or messaging notifications.
+- Transaction analytics and operational reports.
+- Integration with external recycling or compliance systems where appropriate.
+
+Future enhancements should be prioritized according to user needs, technical feasibility, and validation from real-world deployments.
+
+---
+
+## 🔐 Security and Data Integrity
+
+E-Setu handles user profiles, location information, offers, and transaction records. These records must be protected appropriately.
+
+Important design principles include:
+
+- Enforce role-based access control.
+- Validate all state-changing requests on the backend.
+- Protect authentication credentials and session tokens.
+- Restrict access to private participant information.
+- Validate image uploads and file types.
+- Record important transaction state changes.
+- Prevent duplicate offer acceptance and handover operations.
+- Preserve relevant historical offer and settlement records.
+- Restrict administrative operations to authorized users.
+- Obtain permission before accessing location or camera features.
+- Define appropriate retention and deletion policies for transaction evidence.
+
+A QR code alone does not provide transaction integrity. Its associated backend validation, access controls, and recordkeeping are essential.
+
+---
+
+## 📊 Project Scope
+
+E-Setu brings together four major capabilities:
+
+1. **Discover:** Identify materials, estimate their value, and find potential buyers.
+2. **Connect:** Enable collectors and recyclers to exchange competitive offers.
+3. **Verify:** Associate physical handovers with digital transaction records.
+4. **Track:** Preserve price, weight, settlement, and anomaly information for review.
+
+Together, these capabilities provide a foundation for a more transparent and traceable scrap trading ecosystem.
+
+---
+
+## 🤝 Contributing
+
+Contributions may include:
+
+- Improving the user experience.
+- Enhancing material classification.
+- Developing pricing and matching services.
+- Improving transaction security.
+- Testing QR-based handover workflows.
+- Improving offline synchronization.
+- Developing anomaly detection rules.
+- Adding documentation and automated tests.
+
+Contributions should be tested and documented before being incorporated into the main project.
+
+---
+
+## 📜 Disclaimer
+
+E-Setu is designed to support transparent scrap trading and recycling coordination.
+
+Price estimates, material classifications, recycler matching, and anomaly alerts are decision-support features. Their reliability depends on the quality of the available data and the implementation.
+
+Recycler authorization must be established through appropriate verification rather than assumed from registration alone.
+
+The platform does not guarantee a particular selling price or automatically establish that a transaction is fraudulent when an anomaly is detected.
+
+---
+
+## ♻️ E-Setu
+
+**Discover. Connect. Verify. Recycle.**
+
+Building a more transparent, accessible, and accountable scrap recycling ecosystem through technology.
